@@ -1,0 +1,347 @@
+using System.Text;
+using Markdig.Extensions.Mathematics;
+using Markdig.Extensions.Tables;
+using Markdig.Renderers.Html;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
+using Mdv.Core;
+
+namespace Mdv.Terminal;
+
+/// <summary>
+/// Converts a parsed Markdig document into a flat list of <see cref="DisplayLine"/>s, word-wrapped
+/// to a target width and styled with a <see cref="TerminalTheme"/>. Links are registered for
+/// navigation, and mermaid/D2 code blocks become diagram anchors (image placement happens later).
+/// </summary>
+public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int width)
+{
+    private readonly List<DisplayLine> _lines = [];
+    private readonly List<TerminalLink> _links = [];
+    private int _width = Math.Max(20, width);
+
+    public IReadOnlyList<TerminalLink> Links => _links;
+
+    private IReadOnlyList<TocEntry> _toc = [];
+
+    public sealed record RenderResult(IReadOnlyList<DisplayLine> Lines, IReadOnlyList<TerminalLink> Links);
+
+    public RenderResult Render(MarkdownObject document, IReadOnlyList<TocEntry>? toc = null)
+    {
+        _lines.Clear();
+        _links.Clear();
+        _toc = toc ?? [];
+        if (document is ContainerBlock container)
+        {
+            foreach (var block in container)
+                RenderBlock(block, 0);
+        }
+        TrimTrailingBlank();
+        return new RenderResult(_lines, _links);
+    }
+
+    private void RenderBlock(Block block, int indent)
+    {
+        switch (block)
+        {
+            case HeadingBlock heading: RenderHeading(heading); break;
+            case ParagraphBlock para: RenderParagraph(para, indent); break;
+            case ListBlock list: RenderList(list, indent); break;
+            case QuoteBlock quote: RenderQuote(quote, indent); break;
+            case MathBlock math: RenderMathBlock(math, indent); break;
+            case FencedCodeBlock fenced: RenderFenced(fenced, indent); break;
+            case CodeBlock code: RenderIndentedCode(code, indent); break;
+            case Table table: RenderTable(table, indent); break;
+            case ThematicBreakBlock: RenderRule(); break;
+            case ContainerBlock generic:
+                foreach (var child in generic) RenderBlock(child, indent);
+                break;
+            default:
+                // Unknown leaf: render its text if any.
+                if (block is LeafBlock leaf && leaf.Inline is not null)
+                    EmitWrapped(InlineToSpans(leaf.Inline, theme.Text), indent);
+                break;
+        }
+    }
+
+    // ---------------- headings ----------------
+    private void RenderHeading(HeadingBlock heading)
+    {
+        EnsureBlankBefore();
+        var id = heading.GetAttributes().Id;
+        var titleText = TocExtractor.GetPlainText(heading);
+
+        if (heading.Level == 1)
+        {
+            // H1: a bold banner row with a colored background bar.
+            var line = new DisplayLine { HeadingId = id, SourceLine = heading.Line + 1, LineBackground = theme.BackgroundElevated };
+            line.Spans.Add(new StyledSpan("  ", null, CellStyle.None, null, theme.BackgroundElevated));
+            line.Spans.Add(new StyledSpan(titleText, theme.H1, CellStyle.Bold, null, theme.BackgroundElevated));
+            _lines.Add(line);
+            // underline rule
+            var rule = new DisplayLine();
+            rule.Spans.Add(new StyledSpan(new string('━', Math.Max(8, Math.Min(_width - 1, titleText.Length + 4))), theme.H1));
+            _lines.Add(rule);
+            AddBlank();
+            return;
+        }
+
+        // H2/H3+: a colored marker + bold title; H2 also gets a thin underline.
+        var (marker, color) = heading.Level switch
+        {
+            2 => ("▌ ", theme.H2),
+            3 => ("● ", theme.H3),
+            4 => ("◗ ", theme.Heading),
+            _ => ("· ", theme.Muted),
+        };
+        var spans = new List<StyledSpan> { new(marker, color, CellStyle.Bold) };
+        spans.AddRange(InlineToSpans(heading.Inline, color, CellStyle.Bold));
+        EmitWrapped(spans, 0, headingId: id, sourceLine: heading.Line + 1);
+        if (heading.Level == 2)
+        {
+            var rule = new DisplayLine();
+            rule.Spans.Add(new StyledSpan(new string('─', Math.Max(8, _width - 1)), theme.Rule));
+            _lines.Add(rule);
+        }
+        AddBlank();
+    }
+
+    // ---------------- paragraphs ----------------
+    private void RenderParagraph(ParagraphBlock para, int indent)
+    {
+        if (para.Inline is null) return;
+
+        if (IsTocMarker(para))
+        {
+            EmitToc(indent);
+            return;
+        }
+
+        // If the paragraph contains image(s), render them inline (Sixel). Multiple images with no
+        // meaningful text (e.g. a row of badges) are laid out SIDE-BY-SIDE in one strip, like a
+        // browser. A single image, or images mixed with text, render one per line.
+        var images = CollectImages(para.Inline);
+        if (images.Count > 0)
+        {
+            bool hasText = HasNonImageText(para.Inline);
+            if (hasText)
+            {
+                var textSpans = InlineToSpans(para.Inline, theme.Text)
+                    .Where(s => !s.Text.StartsWith("🖼"))
+                    .ToList();
+                if (textSpans.Any(s => !string.IsNullOrWhiteSpace(s.Text)))
+                    EmitWrapped(textSpans, indent, sourceLine: para.Line + 1);
+                foreach (var img in images)
+                    EmitImageAnchor(img.Url, img.Alt, img.LinkUrl);
+            }
+            else if (images.Count == 1)
+            {
+                EmitImageAnchor(images[0].Url, images[0].Alt, images[0].LinkUrl);
+            }
+            else
+            {
+                EmitImageGroupAnchor(images);
+            }
+            AddBlank();
+            return;
+        }
+
+        var spans = InlineToSpans(para.Inline, theme.Text);
+        EmitWrapped(spans, indent, sourceLine: para.Line + 1);
+        AddBlank();
+    }
+
+    /// <summary>True if the inline tree has any literal/code text that is NOT inside an image.</summary>
+    private static bool HasNonImageText(Markdig.Syntax.Inlines.ContainerInline container)
+    {
+        bool found = false;
+        void Walk(Markdig.Syntax.Inlines.Inline inline)
+        {
+            if (found) return;
+            switch (inline)
+            {
+                case Markdig.Syntax.Inlines.LinkInline { IsImage: true }:
+                    return; // skip image subtrees (their alt text isn't shown)
+                case Markdig.Syntax.Inlines.LiteralInline lit:
+                    if (!string.IsNullOrWhiteSpace(lit.Content.ToString())) found = true;
+                    return;
+                case Markdig.Syntax.Inlines.CodeInline:
+                case Markdig.Syntax.Inlines.AutolinkInline:
+                    found = true;
+                    return;
+                case Markdig.Syntax.Inlines.ContainerInline c:
+                    foreach (var child in c) Walk(child);
+                    return;
+            }
+        }
+        foreach (var child in container) Walk(child);
+        return found;
+    }
+
+    private static List<(string Url, string Alt, string? LinkUrl)> CollectImages(Markdig.Syntax.Inlines.ContainerInline container)
+    {
+        var result = new List<(string, string, string?)>();
+        // Track the nearest enclosing (non-image) link so an image wrapped in a link becomes
+        // clickable: [![alt](img)](href).
+        void Walk(Markdig.Syntax.Inlines.Inline inline, string? enclosingLink)
+        {
+            if (inline is Markdig.Syntax.Inlines.LinkInline link)
+            {
+                if (link.IsImage)
+                {
+                    var alt = GetInlineText(link);
+                    result.Add((link.Url ?? "", alt, enclosingLink));
+                    return;
+                }
+                // A normal link: its children (which may include an image) get this as the target.
+                foreach (var child in link) Walk(child, link.Url ?? enclosingLink);
+                return;
+            }
+            if (inline is Markdig.Syntax.Inlines.ContainerInline c)
+            {
+                foreach (var child in c) Walk(child, enclosingLink);
+            }
+        }
+        foreach (var child in container) Walk(child, null);
+        return result;
+    }
+
+    private static bool IsTocMarker(ParagraphBlock para)
+    {
+        // The marker is "[[_TOC_]]" on its own line; emphasis parsing may turn "_TOC_" into
+        // an <em>, so compare against the de-emphasized text too.
+        var text = TocExtractor.GetPlainText(para).Trim();
+        return text is "[[_TOC_]]" or "[[TOC]]";
+    }
+
+    private void EmitToc(int indent)
+    {
+        if (_toc.Count == 0) return;
+        EnsureBlankBefore();
+        foreach (var entry in _toc)
+        {
+            var line = new DisplayLine();
+            var pad = new string(' ', indent + (entry.Level - 1) * 2);
+            var id = RegisterLink("#" + entry.Id);
+            line.Spans.Add(new StyledSpan(pad + "• ", theme.Muted));
+            line.Spans.Add(new StyledSpan(entry.Title, theme.Link, CellStyle.Underline, id));
+            _lines.Add(line);
+        }
+        AddBlank();
+    }
+
+    // ---------------- inline conversion ----------------
+    private List<StyledSpan> InlineToSpans(ContainerInline? container, Rgb baseColor, CellStyle baseStyle = CellStyle.None)
+    {
+        var spans = new List<StyledSpan>();
+        if (container is null) return spans;
+        foreach (var inline in container)
+            AppendInline(inline, spans, baseColor, baseStyle, null);
+        return spans;
+    }
+
+    private void AppendInline(Inline inline, List<StyledSpan> spans, Rgb color, CellStyle style, int? linkId)
+    {
+        switch (inline)
+        {
+            case LiteralInline literal:
+                spans.Add(new StyledSpan(literal.Content.ToString(), color, style, linkId));
+                break;
+            case EmphasisInline emphasis:
+            {
+                var newStyle = style | (emphasis.DelimiterCount >= 2 ? CellStyle.Bold : CellStyle.Italic);
+                if (emphasis.DelimiterChar is '~') newStyle = style | CellStyle.Strikethrough;
+                foreach (var child in emphasis) AppendInline(child, spans, color, newStyle, linkId);
+                break;
+            }
+            case CodeInline code:
+                spans.Add(new StyledSpan(code.Content, theme.Code, style, linkId));
+                break;
+            case MathInline math:
+                spans.Add(new StyledSpan(MathRenderer.ToUnicode(math.Content.ToString()), theme.Code, style, linkId));
+                break;
+            case LinkInline link:
+            {
+                if (link.IsImage)
+                {
+                    var alt = GetInlineText(link);
+                    spans.Add(new StyledSpan($"🖼 {alt} ({link.Url})", theme.Muted, style | CellStyle.Italic, linkId));
+                    break;
+                }
+                var id = RegisterLink(link.Url ?? "");
+                var linkColor = theme.Link;
+                var linkStyle = style | CellStyle.Underline;
+                foreach (var child in link) AppendInline(child, spans, linkColor, linkStyle, id);
+                AppendLinkMarker(spans, id);
+                break;
+            }
+            case AutolinkInline auto:
+            {
+                var id = RegisterLink(auto.Url);
+                spans.Add(new StyledSpan(auto.Url, theme.Link, style | CellStyle.Underline, id));
+                AppendLinkMarker(spans, id);
+                break;
+            }
+            case LineBreakInline lb:
+                spans.Add(new StyledSpan(lb.IsHard ? "\n" : " ", color, style, linkId));
+                break;
+            case ContainerInline c:
+                foreach (var child in c) AppendInline(child, spans, color, style, linkId);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static string GetInlineText(ContainerInline container)
+    {
+        var sb = new StringBuilder();
+        foreach (var inline in container)
+        {
+            if (inline is LiteralInline lit) sb.Append(lit.Content.AsSpan());
+            else if (inline is ContainerInline c) sb.Append(GetInlineText(c));
+        }
+        return sb.ToString();
+    }
+
+    private int RegisterLink(string url)
+    {
+        var id = _links.Count;
+        _links.Add(new TerminalLink(id, url));
+        return id;
+    }
+
+    private static readonly string[] SuperscriptDigits = { "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹" };
+
+    /// <summary>Appends a small superscript number after a link so users know which key opens it.</summary>
+    private void AppendLinkMarker(List<StyledSpan> spans, int id)
+    {
+        int ordinal = id + 1;            // links are followed by pressing 1..9
+        if (ordinal < 1 || ordinal > 9) return;
+        spans.Add(new StyledSpan(SuperscriptDigits[ordinal], theme.Accent, CellStyle.Bold, id));
+    }
+
+    // ---------------- helpers for line emission live in Emit.cs (partial) ----------------
+    private void AddBlank()
+    {
+        if (_lines.Count > 0 && _lines[^1].VisibleLength == 0 && _lines[^1].DiagramKey is null) return;
+        _lines.Add(DisplayLine.Empty());
+    }
+
+    private void EnsureBlankBefore()
+    {
+        if (_lines.Count == 0) return;
+        if (_lines[^1].VisibleLength != 0) _lines.Add(DisplayLine.Empty());
+    }
+
+    private void TrimTrailingBlank()
+    {
+        while (_lines.Count > 0 && _lines[^1].VisibleLength == 0 && _lines[^1].DiagramKey is null)
+            _lines.RemoveAt(_lines.Count - 1);
+    }
+
+    internal int Width => _width;
+    internal TerminalTheme Theme => theme;
+    internal List<DisplayLine> Lines => _lines;
+}
+
+public sealed record TerminalLink(int Id, string Url);

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-theme="__THEME__">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>__TITLE__</title>
+  <link rel="stylesheet" href="/_mdv/vendor/katex.min.css" />
+  <link rel="stylesheet" id="hljs-theme" href="/_mdv/vendor/github-dark.min.css" />
+  <link rel="stylesheet" href="/_mdv/app.css" />
+</head>
+<body>
+  <div id="mdv-layout">
+    <aside id="mdv-sidebar">
+      <div id="mdv-sidebar-head">
+        <span id="mdv-doc-title">__TITLE__</span>
+      </div>
+      <nav id="mdv-toc" aria-label="Table of contents"></nav>
+    </aside>
+    <main id="mdv-main">
+      <div id="mdv-toolbar">
+        <button id="mdv-toggle-sidebar" title="Toggle sidebar (t)">☰</button>
+        <input id="mdv-search" type="search" placeholder="Search (/ or Ctrl+F)…" autocomplete="off" />
+        <span id="mdv-search-count"></span>
+        <button id="mdv-search-prev" title="Previous (Shift+Enter)">▲</button>
+        <button id="mdv-search-next" title="Next (Enter)">▼</button>
+        <span class="mdv-spacer"></span>
+        <button id="mdv-toggle-zen" title="Zen mode (z)">⛶</button>
+        <button id="mdv-theme-toggle" title="Toggle theme ([)">◐</button>
+        <button id="mdv-back" title="Back (Alt+←)">←</button>
+        <button id="mdv-forward" title="Forward (Alt+→)">→</button>
+      </div>
+      <article id="mdv-content">__BODY__</article>
+    </main>
+  </div>
+  <div id="mdv-status" class="mdv-hidden"><span id="mdv-status-text"></span></div>
+
+  <div id="mdv-help-overlay" class="mdv-hidden" role="dialog" aria-modal="true" aria-label="Keybindings">
+    <div id="mdv-help-panel">
+      <div id="mdv-help-head">Keybindings <span id="mdv-help-close" title="Close (Esc)">×</span></div>
+      <div id="mdv-help-body"></div>
+      <div id="mdv-help-foot">press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>
+    </div>
+  </div>
+
+  <script src="/_mdv/vendor/katex.min.js"></script>
+  <script src="/_mdv/vendor/auto-render.min.js"></script>
+  <script src="/_mdv/vendor/highlight.min.js"></script>
+  <script src="/_mdv/vendor/powershell.min.js"></script>
+  <script src="/_mdv/vendor/idiomorph.min.js"></script>
+  <script src="/_mdv/vendor/mermaid.min.js"></script>
+  <script type="module" src="/_mdv/app.js"></script>
+</body>
+</html>

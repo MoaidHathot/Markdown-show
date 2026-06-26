@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SixelView is a DEV-ONLY diagnostic harness used to verify terminal rendering. It decodes the
+    exact Sixel bytes Mdv.Terminal emits back into a PNG so the output can be inspected visually.
+
+    This project is intentionally NOT part of Mdv.slnx and is NOT shipped in the `mdv` package.
+    It is never referenced by the product and never runs at mdv runtime.
+    See Program.cs for the full list of modes and flags.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <!-- Keep this tool out of any solution-wide "pack everything" flows. -->
+    <PackAsTool>false</PackAsTool>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Mdv.Terminal\Mdv.Terminal.csproj" />
+    <ProjectReference Include="..\..\src\Mdv.Diagrams\Mdv.Diagrams.csproj" />
+  </ItemGroup>
+
+</Project>

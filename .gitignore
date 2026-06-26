@@ -1,0 +1,16 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+
+## Tool output / packaging
+artifacts/
+*.nupkg
+
+## OS
+Thumbs.db
+.DS_Store
+
+## Node (web assets tooling, if used)
+node_modules/

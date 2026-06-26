@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c8cf8"/>
+      <stop offset="1" stop-color="#b06bff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="320" height="120" rx="14" fill="#0d1117"/>
+  <rect x="8" y="8" width="304" height="104" rx="10" fill="none" stroke="url(#g)" stroke-width="2"/>
+  <text x="160" y="56" font-family="Segoe UI, sans-serif" font-size="34" font-weight="700"
+        fill="url(#g)" text-anchor="middle">mdv</text>
+  <text x="160" y="86" font-family="Segoe UI, sans-serif" font-size="15"
+        fill="#9da7b3" text-anchor="middle">markdown, in your terminal</text>
+</svg>

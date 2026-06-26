@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>mdv</AssemblyName>
+    <RootNamespace>Mdv.Cli</RootNamespace>
+
+    <!-- .NET tool packaging: enables `dnx mdv <file>` / `dotnet tool install -g mdv` -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>mdv</ToolCommandName>
+    <PackageId>mdv</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Markdown-show</Authors>
+    <Description>A terminal-first, feature-rich Markdown viewer with live reload, search, [[_TOC_]], mermaid and D2 diagrams, and an optional browser mode.</Description>
+    <PackageTags>markdown;viewer;tui;terminal;mermaid;d2;cli</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mdv.Core\Mdv.Core.csproj" />
+    <ProjectReference Include="..\Mdv.Diagrams\Mdv.Diagrams.csproj" />
+    <ProjectReference Include="..\Mdv.Web\Mdv.Web.csproj" />
+    <ProjectReference Include="..\Mdv.Terminal\Mdv.Terminal.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="3.0.0-preview.5.26302.115" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Condition="Exists('..\..\README.md')" />
+  </ItemGroup>
+
+</Project>
