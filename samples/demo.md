@@ -24,6 +24,33 @@ Welcome to **mdv**, a terminal-first Markdown viewer with an optional browser mo
 > [!NOTE]
 > This document exercises every major feature. Edit it while `mdv` is running to see live reload.
 
+## Text formatting
+
+This paragraph mixes **bold**, *italic*, ***bold italic***, `inline code`, ~~strikethrough~~, and a
+[regular link](https://opencode.ai). Emoji shortcodes work too: :rocket: :sparkles: :tada:.
+
+Two trailing spaces force a hard line break —
+this text starts on a brand-new line.
+
+## GitHub alerts
+
+All five alert kinds are recognized and styled with their own icon, title, and color:
+
+> [!NOTE]
+> Useful information that users should know, even when skimming.
+
+> [!TIP]
+> Helpful advice for doing things better or more easily.
+
+> [!IMPORTANT]
+> Key information users need to know to achieve their goal.
+
+> [!WARNING]
+> Urgent info that needs immediate user attention to avoid problems.
+
+> [!CAUTION]
+> Advises about risks or negative outcomes of certain actions.
+
 ### Code with highlighting
 
 Inline code like `dotnet build`, `Get-ChildItem`, and `npm run dev` renders distinctly. Below are
@@ -312,18 +339,32 @@ jobs:
  }
 ```
 
-### A table
+### Tables
+
+Column alignment (`:--`, `:-:`, `--:`) is honored, and **wide cells wrap** instead of being truncated.
 
 | Feature   | Terminal | Browser |
-| --------- | :------: | :-----: |
-| Mermaid   |    ✓     |    ✓    |
-| D2        |    ✓     |    ✓    |
-| Live edit |    ✓     |    ✓    |
+| --------- | :------: | ------: |
+| Mermaid   |    ✓     |       ✓ |
+| D2        |    ✓     |       ✓ |
+| Live edit |    ✓     |       ✓ |
+
+| Option        | What it does                                                                                          |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| `--browser`   | Opens the document in your browser for full-fidelity rendering of mermaid, D2, and math via KaTeX.    |
+| `--best-effort` | Skips the one-time headless-browser download in the terminal; mermaid diagrams open in the browser on demand instead of rendering inline as Sixel. |
+| `--theme`     | Chooses dark, light, or auto. Auto honors `COLORFGBG` when present and otherwise defaults to dark.    |
+
+### Long links wrap
+
+Long, unbreakable URLs wrap to the next line instead of being clipped at the screen edge:
+https://example.com/some/really/long/path/that/keeps/going/and/going/until/it/exceeds/the/terminal/width/and/needs/to/wrap.html
 
 ### Task list
 
 - [x] Parse markdown
 - [x] Render diagrams
+- [x] Tables, alerts, footnotes, definition lists
 - [ ] Conquer the world
 
 ## Diagrams
@@ -455,7 +496,9 @@ Front matter
 
 ## Footnotes
 
-Footnotes[^demo] are collected here automatically.
+Footnotes let you add references[^demo] and asides[^aside] without breaking the flow of reading.
+They render as superscript markers in the text and a numbered list at the bottom of the document.
 
-[^demo]: They render as superscript markers in the text and a numbered list at the end.
+[^demo]: A numbered footnote definition. Markers in the text link to these entries.
+[^aside]: Footnotes can be referenced by any label (here, "aside") and are renumbered in order.
 
