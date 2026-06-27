@@ -283,6 +283,7 @@ public sealed partial class TerminalViewer
 
         _screen.MoveTo(row, 0);
         int col = 0;
+        bool lineSelected = _selAnchor is not null && LineInSelection(lineIndex);
         foreach (var span in line.Spans)
         {
             if (col >= width) break;
@@ -293,6 +294,14 @@ public sealed partial class TerminalViewer
             if (_searchHits.Count > 0 && SpanHasHit(lineIndex))
             {
                 DrawSpanWithHighlight(line, lineIndex, span, ref col, width);
+                continue;
+            }
+
+            // Selection highlight (mark mode): render char-by-char so we can flip the background on
+            // the selected cells.
+            if (lineSelected)
+            {
+                DrawSpanWithSelection(lineIndex, span, text, ref col, width);
                 continue;
             }
 

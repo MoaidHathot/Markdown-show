@@ -173,21 +173,35 @@ internal static class KeyReader
                 : new KeyEvent(KeyKind.MouseScrollDown, Ctrl: ctrl);
         }
 
-        // Left-button press edge (was up, now down) and not a drag → a click.
+        bool leftNow = (me.dwButtonState & FROM_LEFT_1ST_BUTTON) != 0;
+        bool leftBefore = (_prevButtonState & FROM_LEFT_1ST_BUTTON) != 0;
+        bool rightNow = (me.dwButtonState & RIGHTMOST_BUTTON) != 0;
+        bool rightBefore = (_prevButtonState & RIGHTMOST_BUTTON) != 0;
+        int row = me.dwMousePosition.Y, colPos = me.dwMousePosition.X;
+        _prevButtonState = me.dwButtonState;
+
+        // Drag: mouse moved while the left button is held.
+        if (me.dwEventFlags == MOUSE_MOVED)
+        {
+            if (leftNow) return new KeyEvent(KeyKind.MouseDrag, MouseRow: row, MouseCol: colPos);
+            return null;
+        }
+
+        // Button press/release edges (dwEventFlags == 0) and double-clicks.
         if (me.dwEventFlags == 0 || me.dwEventFlags == DOUBLE_CLICK)
         {
-            bool leftNow = (me.dwButtonState & FROM_LEFT_1ST_BUTTON) != 0;
-            bool leftBefore = (_prevButtonState & FROM_LEFT_1ST_BUTTON) != 0;
-            _prevButtonState = me.dwButtonState;
+            // Right-button press edge → right-click (used to copy a selection).
+            if (rightNow && !rightBefore)
+                return new KeyEvent(KeyKind.MouseRightClick, MouseRow: row, MouseCol: colPos);
+
+            // Left-button down edge → a click (follows links in normal mode; starts a drag
+            // selection in mark mode — the viewer decides based on its current mode).
             if (leftNow && !leftBefore)
-            {
-                return new KeyEvent(KeyKind.MouseClick,
-                    MouseRow: me.dwMousePosition.Y, MouseCol: me.dwMousePosition.X);
-            }
-        }
-        else
-        {
-            _prevButtonState = me.dwButtonState;
+                return new KeyEvent(KeyKind.MouseClick, MouseRow: row, MouseCol: colPos);
+
+            // Left-button up edge → end of a drag.
+            if (!leftNow && leftBefore)
+                return new KeyEvent(KeyKind.MouseDragEnd, MouseRow: row, MouseCol: colPos);
         }
         return null;
     }
@@ -230,8 +244,10 @@ internal static class KeyReader
     private const ushort KEY_EVENT = 0x0001;
     private const ushort MOUSE_EVENT = 0x0002;
     private const uint MOUSE_WHEELED = 0x0004;
+    private const uint MOUSE_MOVED = 0x0001;
     private const uint DOUBLE_CLICK = 0x0002;
     private const uint FROM_LEFT_1ST_BUTTON = 0x0001;
+    private const uint RIGHTMOST_BUTTON = 0x0002;
     private const int LEFT_CTRL_PRESSED = 0x0008;
     private const int RIGHT_CTRL_PRESSED = 0x0004;
 

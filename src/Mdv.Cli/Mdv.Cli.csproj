@@ -11,11 +11,15 @@
     <PackageId>mdv</PackageId>
     <Version>0.1.0</Version>
     <InformationalVersion>0.1.0</InformationalVersion>
-    <Authors>Markdown-show</Authors>
+    <Authors>MoaidHathot</Authors>
+    <Title>mdv — terminal Markdown viewer</Title>
     <Description>A terminal-first, feature-rich Markdown viewer with live reload, search, [[_TOC_]], mermaid and D2 diagrams, and an optional browser mode.</Description>
     <PackageTags>markdown;viewer;tui;terminal;mermaid;d2;cli</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/MoaidHathot/mdv</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MoaidHathot/mdv</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>

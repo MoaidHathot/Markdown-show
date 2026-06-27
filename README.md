@@ -1,4 +1,4 @@
-# Markdown-show (`mdv`)
+# mdv — terminal Markdown viewer
 
 A **terminal-first, feature-rich Markdown viewer** with an optional browser mode. It renders Markdown right in your terminal — including **mermaid** and **D2** diagrams (as real images via Sixel), syntax-highlighted code, tables, GitHub-style alerts, math, and an Azure DevOps `[[_TOC_]]` table of contents — and live-reloads as you edit. When you want full fidelity, the same document opens in your browser with one keypress.
 
@@ -62,12 +62,14 @@ Vim-style motions are supported throughout, plus the mouse wheel scrolls.
 | `gg` / `G` | Top / bottom | `←` / `→` (or `Backspace`) | Back / forward (history) |
 | `Home` / `End` | Top / bottom | `[` | Toggle light / dark theme |
 | `o` | Open in browser | `]` | Toggle solid / transparent background |
-| `m` | Select-text mode (mouse) | `q` (or `Ctrl+C`) | Quit |
+| `m` | Mark mode (select + copy) | `q` (or `Ctrl+C`) | Quit |
 | `?` | Keybindings overlay | | |
 
 Mouse-wheel scrolling captures the mouse, which disables the terminal's native click-drag text
-selection. Press `m` to toggle **select mode** (the status bar shows `[SELECT]`): the wheel stops
-scrolling and you can drag to select/copy text; press `m` again to restore wheel scrolling.
+selection. Press `m` to enter **mark mode** (the status bar shows `[SELECT]`): **drag** with the left
+button to select text, then **right-click** to copy the selection to the clipboard. `Esc` clears the
+selection; press `m` again to leave mark mode and restore wheel scrolling. Copy uses the Win32
+clipboard on Windows and OSC 52 elsewhere (Windows Terminal, WezTerm, kitty, iTerm2, …).
 
 Theme and background can also be set at launch with `--theme` and `--background`.
 
@@ -111,8 +113,8 @@ Inline diagrams in the terminal use the **Sixel** graphics protocol. Supported t
 ## Building from source
 
 ```bash
-git clone <repo>
-cd Markdown-show
+git clone https://github.com/MoaidHathot/mdv
+cd mdv
 dotnet build Mdv.slnx
 dotnet test tests/Mdv.Tests/Mdv.Tests.csproj                   # run the test suite
 dotnet run --project src/Mdv.Cli -- samples/demo.md            # terminal

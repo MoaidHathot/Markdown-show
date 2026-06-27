@@ -51,8 +51,13 @@ public sealed partial class TerminalViewer : IAsyncDisposable
     private bool _dirty = true;
     private volatile bool _running = true;
     private readonly CancellationTokenSource _lifetimeCts = new();   // cancels in-flight renders on exit
-    private bool _selectionMode;   // when true, mouse capture is off so the terminal can select text
+    private bool _selectionMode;   // mark mode: mdv tracks a drag selection and copies it on right-click
     private string? _pendingExternalUrl;   // remote URL awaiting y/N confirmation before opening
+
+    // Text selection in mark mode. Anchor/Cursor are (document line index, display column). A null
+    // anchor means no active selection.
+    private (int Line, int Col)? _selAnchor;
+    private (int Line, int Col) _selCursor;
 
     // Pending vim 'g' prefix (for the gg = go-to-top motion).
     private bool _pendingGPrefix;

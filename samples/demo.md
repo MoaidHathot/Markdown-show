@@ -1,10 +1,10 @@
 ---
-title: Markdown-show Demo
+title: mdv Demo
 author: mdv
 date: 2026-01-01
 ---
 
-# Markdown-show Demo
+# mdv Demo
 
 [[_TOC_]]
 

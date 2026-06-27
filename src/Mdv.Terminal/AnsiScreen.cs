@@ -139,6 +139,18 @@ public sealed class AnsiScreen : IDisposable
     /// <summary>Writes pre-formed escape data (e.g. a Sixel sequence) verbatim.</summary>
     public AnsiScreen WriteEscape(string sequence) { _buffer.Append(sequence); return this; }
 
+    /// <summary>
+    /// Writes a control sequence to the terminal immediately, bypassing the frame buffer (used for
+    /// out-of-band sequences like the OSC 52 clipboard write that must not interleave with a frame).
+    /// </summary>
+    public void WriteControlNow(string sequence)
+    {
+        if (_capture) return;
+        var bytes = Encoding.UTF8.GetBytes(sequence);
+        _stdout.Write(bytes, 0, bytes.Length);
+        _stdout.Flush();
+    }
+
     public void Flush()
     {
         if (_capture) return;   // keep the buffer; CaptureBuffer exposes it

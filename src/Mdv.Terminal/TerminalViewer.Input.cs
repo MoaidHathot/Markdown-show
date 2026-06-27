@@ -267,7 +267,14 @@ public sealed partial class TerminalViewer
             case KeyKind.MouseScrollDown when key.Ctrl: ZoomDiagrams(-1); return;
             case KeyKind.MouseScrollUp: ScrollBy(-1); return;
             case KeyKind.MouseScrollDown: ScrollBy(1); return;
+            case KeyKind.MouseClick when _selectionMode: SelectionBegin(key.MouseRow, key.MouseCol); return;
             case KeyKind.MouseClick: HandleClick(key.MouseRow, key.MouseCol); return;
+            case KeyKind.MouseDrag when _selectionMode: SelectionExtend(key.MouseRow, key.MouseCol); return;
+            case KeyKind.MouseDragEnd when _selectionMode: SelectionExtend(key.MouseRow, key.MouseCol); return;
+            case KeyKind.MouseRightClick when _selectionMode: CopySelection(); return;
+            case KeyKind.MouseDrag: return;
+            case KeyKind.MouseDragEnd: return;
+            case KeyKind.MouseRightClick: return;
             case KeyKind.Down: ScrollBy(1); return;
             case KeyKind.Up: ScrollBy(-1); return;
             case KeyKind.PageDown: ScrollBy(ViewportHeight - 2); return;
@@ -278,7 +285,9 @@ public sealed partial class TerminalViewer
             case KeyKind.Right: GoForward(); return;
             case KeyKind.Backspace: GoBack(); return;
             case KeyKind.Enter: FollowFirstVisibleLink(); return;
-            case KeyKind.Escape: return;
+            case KeyKind.Escape:
+                ClearSelection();   // dismiss an active mark-mode selection
+                return;
             case KeyKind.Tab: return;
         }
 
@@ -748,10 +757,14 @@ public sealed partial class TerminalViewer
     private void ToggleSelectionMode()
     {
         _selectionMode = !_selectionMode;
-        KeyReader.SetMouseCapture(!_selectionMode);
+        // In mark mode we keep capturing the mouse (capture stays ON) so mdv can track the drag
+        // selection itself and copy it on right-click. Outside mark mode the wheel scrolls.
+        KeyReader.SetMouseCapture(true);
+        if (!_selectionMode) ClearSelection();
         SetStatus(_selectionMode
-            ? "Select mode ON — drag to select text; press m to scroll with the wheel again"
+            ? "Select mode ON — drag to select, right-click to copy; press m to exit"
             : "Select mode OFF — mouse wheel scrolls", 4);
+        _dirty = true;
     }
 
     // ---------------- browser handoff ----------------

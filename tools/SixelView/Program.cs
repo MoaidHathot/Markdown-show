@@ -43,6 +43,7 @@ internal static class Program
                 "--images" => await DoImagesAsync(opt, bg, bgColor),
                 "--overlay" => DoOverlay(opt, bgColor),
                 "--doc" => DoDoc(opt, bgColor),
+                "--select" => DoSelect(opt, bgColor),
                 _ => Fail($"Unknown mode '{opt.Mode}'."),
             };
         }
@@ -68,6 +69,21 @@ internal static class Program
         using var bmp = AnsiGridRenderer.Render(ansi, cols, rows, defBg, defFg);
         Console.WriteLine($"doc rendered {cols}x{rows} cells -> {bmp.Width}x{bmp.Height}px");
         return Save(bmp, opt, $"doc-{(opt.Dark ? "dark" : "light")}", sourceBytes: ansi.Length);
+    }
+
+    private static int DoSelect(Options opt, SKColor bgColor)
+    {
+        if (opt.Input is null) return Fail("--select needs a path to a .md file. Use --a-line/--a-col/--b-line/--b-col for the range.");
+        string md = File.ReadAllText(opt.Input);
+        int cols = opt.Cols > 0 ? opt.Cols : 100;
+        int rows = opt.OverlayRows > 0 ? opt.OverlayRows : 24;
+        string ansi = TerminalViewer.CaptureDocumentWithSelection(opt.Dark, cols, rows, md,
+            opt.ALine, opt.ACol, opt.BLine, opt.BCol);
+        var defBg = opt.Dark ? new SKColor(0x0d, 0x11, 0x17) : new SKColor(0xff, 0xff, 0xff);
+        var defFg = opt.Dark ? new SKColor(0xe6, 0xed, 0xf3) : new SKColor(0x1f, 0x23, 0x28);
+        using var bmp = AnsiGridRenderer.Render(ansi, cols, rows, defBg, defFg);
+        Console.WriteLine($"selection render {cols}x{rows} -> {bmp.Width}x{bmp.Height}px");
+        return Save(bmp, opt, $"select-{(opt.Dark ? "dark" : "light")}", sourceBytes: ansi.Length);
     }
 
     private static int DoOverlay(Options opt, SKColor bgColor)
@@ -322,6 +338,7 @@ internal static class Program
         public string? Out;
         public int OverlayRows;     // grid height for --overlay (0 = default)
         public int TocSelected;     // selected index for --overlay toc
+        public int ALine, ACol, BLine, BCol;   // selection range for --select
 
         /// <summary>True for the inline-image mode (where the dark-transparent light-card backdrop applies).</summary>
         public bool IsImageMode => Mode is "--images";
@@ -338,7 +355,7 @@ internal static class Program
                 string? Next() => (i + 1 < args.Length) ? args[++i] : null;
                 switch (a)
                 {
-                    case "--raw": case "--png": case "--diagram": case "--images": case "--overlay": case "--doc":
+                    case "--raw": case "--png": case "--diagram": case "--images": case "--overlay": case "--doc": case "--select":
                         o.Mode = a; if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) o.Input = args[++i]; break;
                     case "--theme": o.Dark = (Next() ?? "dark").Equals("dark", StringComparison.OrdinalIgnoreCase); break;
                     case "--kind": o.Kind = (Next() ?? "mermaid").Equals("d2", StringComparison.OrdinalIgnoreCase) ? DiagramKind.D2 : DiagramKind.Mermaid; break;
@@ -346,6 +363,10 @@ internal static class Program
                     case "--cols": o.Cols = int.Parse(Next() ?? "120"); break;
                     case "--rows": o.OverlayRows = int.Parse(Next() ?? "0"); break;
                     case "--sel": o.TocSelected = int.Parse(Next() ?? "0"); break;
+                    case "--a-line": o.ALine = int.Parse(Next() ?? "0"); break;
+                    case "--a-col": o.ACol = int.Parse(Next() ?? "0"); break;
+                    case "--b-line": o.BLine = int.Parse(Next() ?? "0"); break;
+                    case "--b-col": o.BCol = int.Parse(Next() ?? "0"); break;
                     case "--cell-w": o.CellW = int.Parse(Next() ?? "10"); break;
                     case "--cell-h": o.CellH = int.Parse(Next() ?? "20"); break;
                     case "--crop-row": o.CropRow = int.Parse(Next() ?? "0"); break;

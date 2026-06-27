@@ -231,7 +231,7 @@ public sealed partial class TerminalViewer
         }),
         ("MORE", new[]
         {
-            ("m", "select-text mode"),
+            ("m", "mark mode (drag = select, right-click = copy)"),
             ("o", "open in browser"),
             ("?", "this help"),
             ("q", "quit"),
@@ -509,6 +509,28 @@ public sealed partial class TerminalViewer
         var result = renderer.Render(doc, null);
         v._lines = result.Lines;
         v._scroll = Math.Clamp(scroll, 0, Math.Max(0, v._lines.Count - 1));
+        v._screen.BeginFrame();
+        v.PaintBaseForCapture();
+        v._screen.Reset();
+        return v._screen.CaptureBuffer;
+    }
+
+    /// <summary>Dev/testing: captures a document with a mark-mode selection applied, to verify the
+    /// selection highlight rendering.</summary>
+    public static string CaptureDocumentWithSelection(bool dark, int width, int height, string markdown,
+        int aLine, int aCol, int bLine, int bCol)
+    {
+        var v = new TerminalViewer(dark, width, height, []);
+        var pipeline = new MarkdownPipelineBuilder()
+            .UseYamlFrontMatter().UseAdvancedExtensions().UseEmojiAndSmiley()
+            .UseMathematics().UseGenericAttributes().Build();
+        var doc = Markdown.Parse(markdown, pipeline);
+        var renderer = new MarkdownTerminalRenderer(v._theme, width - 1);
+        var result = renderer.Render(doc, null);
+        v._lines = result.Lines;
+        v._selectionMode = true;
+        v._selAnchor = (aLine, aCol);
+        v._selCursor = (bLine, bCol);
         v._screen.BeginFrame();
         v.PaintBaseForCapture();
         v._screen.Reset();
