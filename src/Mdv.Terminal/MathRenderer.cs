@@ -23,6 +23,71 @@ public static class MathRenderer
         return s;
     }
 
+    /// <summary>
+    /// Converts display math to one or more output lines, laying out LaTeX environments
+    /// (<c>matrix</c>/<c>pmatrix</c>/<c>bmatrix</c>/<c>aligned</c>/<c>align</c>/<c>cases</c>/<c>array</c>)
+    /// as a simple aligned grid: rows split on <c>\\</c>, columns split on <c>&amp;</c>. Without an
+    /// environment it returns the single converted line.
+    /// </summary>
+    public static List<string> ToUnicodeBlock(string latex)
+    {
+        if (string.IsNullOrWhiteSpace(latex)) return [latex];
+        var s = latex.Trim();
+
+        var env = System.Text.RegularExpressions.Regex.Match(s,
+            @"\\begin\{(?<n>pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix|aligned|align\*?|cases|array)\}(?<body>[\s\S]*?)\\end\{\k<n>\}");
+        if (!env.Success)
+            return ToUnicode(s).Split('\n').ToList();
+
+        string name = env.Groups["n"].Value;
+        string body = env.Groups["body"].Value;
+
+        // array/aligned may carry a column spec like {cc} right after \begin{array}; drop it.
+        body = System.Text.RegularExpressions.Regex.Replace(body, @"^\s*\{[lcr|]*\}", "");
+
+        // Split into rows (on \\) then columns (on unescaped &), convert each cell.
+        var rows = System.Text.RegularExpressions.Regex.Split(body, @"\\\\")
+            .Select(r => r.Trim())
+            .Where(r => r.Length > 0)
+            .Select(r => System.Text.RegularExpressions.Regex.Split(r, @"(?<!\\)&")
+                .Select(c => ToUnicode(c.Trim())).ToArray())
+            .ToList();
+        if (rows.Count == 0) return [ToUnicode(s)];
+
+        int cols = rows.Max(r => r.Length);
+        var widths = new int[cols];
+        foreach (var r in rows)
+            for (int c = 0; c < r.Length; c++)
+                widths[c] = Math.Max(widths[c], r[c].Length);
+
+        (string l, string r) brackets = name switch
+        {
+            "pmatrix" => ("(", ")"),
+            "bmatrix" or "array" => ("[", "]"),
+            "Bmatrix" => ("{", "}"),
+            "vmatrix" => ("|", "|"),
+            "Vmatrix" => ("‖", "‖"),
+            "cases" => ("{", " "),
+            _ => ("", ""),
+        };
+
+        var lines = new List<string>();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var cells = rows[i];
+            var padded = new List<string>();
+            for (int c = 0; c < cols; c++)
+                padded.Add((c < cells.Length ? cells[c] : "").PadRight(widths[c]));
+            string joined = string.Join("  ", padded).TrimEnd();
+            // Vertical bracket pieces: ⎡ ⎢ ⎣ etc. would be ideal, but plain brackets on the middle
+            // row read clearly in a terminal; use them on the first/only and last rows.
+            string left = brackets.l.Length == 0 ? "" : (rows.Count == 1 ? brackets.l : (i == 0 ? brackets.l : (i == rows.Count - 1 ? brackets.l : " ")));
+            string right = brackets.r.Length == 0 ? "" : (rows.Count == 1 ? brackets.r : (i == 0 ? brackets.r : (i == rows.Count - 1 ? brackets.r : " ")));
+            lines.Add($"{left} {joined} {right}".Trim());
+        }
+        return lines;
+    }
+
     private static readonly Dictionary<string, string> Symbols = new()
     {
         // Greek (lower)
@@ -140,6 +205,26 @@ public static class MathRenderer
         ['+'] = '₊', ['-'] = '₋', ['='] = '₌', ['('] = '₍', [')'] = '₎',
         ['a'] = 'ₐ', ['e'] = 'ₑ', ['i'] = 'ᵢ', ['j'] = 'ⱼ', ['o'] = 'ₒ', ['x'] = 'ₓ', ['n'] = 'ₙ',
     };
+
+    /// <summary>
+    /// Converts a short run of text to Unicode super/subscript glyphs. Digits and the mapped letters
+    /// convert directly; if any character has no super/subscript form, the whole run falls back to a
+    /// readable bracketed notation (<c>^(...)</c> / <c>_(...)</c>) so nothing is lost.
+    /// </summary>
+    public static string ToScript(string text, bool superscript)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var map = superscript ? SuperMap : SubMap;
+        var digits = superscript ? SuperDigits : SubDigits;
+        var sb = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            if (ch >= '0' && ch <= '9') sb.Append(digits[ch - '0']);
+            else if (map.TryGetValue(char.ToLowerInvariant(ch), out var m)) sb.Append(m);
+            else return (superscript ? "^(" : "_(") + text + ")";   // unmappable → bracketed fallback
+        }
+        return sb.ToString();
+    }
 
     private static string ReplaceScripts(string s)
     {

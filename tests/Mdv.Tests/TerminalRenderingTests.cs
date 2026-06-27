@@ -129,4 +129,65 @@ public class TerminalRenderingTests
         var text = Render.Text(md);
         Assert.Contains("Mermaid", text);   // the caption label
     }
+
+    [Fact]
+    public void Raw_html_block_text_is_not_dropped()
+    {
+        var md = "<div class=\"note\">\nKeep this text visible.\n</div>";
+        var text = Render.Text(md);
+        Assert.Contains("Keep this text visible.", text);
+    }
+
+    [Fact]
+    public void Abbreviation_term_is_not_dropped()
+    {
+        var md = "The HTML spec is long.\n\n*[HTML]: HyperText Markup Language";
+        var text = Render.Text(md);
+        Assert.Contains("HTML", text);   // the abbreviated word must survive
+        Assert.Contains("spec", text);
+    }
+
+    [Fact]
+    public void Subscript_and_superscript_convert_to_unicode()
+    {
+        var text = Render.Text("Water is H~2~O and energy is E=mc^2^.");
+        Assert.Contains("H₂O", text);    // subscript
+        Assert.Contains("mc²", text);    // superscript
+    }
+
+    [Fact]
+    public void Inserted_and_marked_text_survive()
+    {
+        var text = Render.Text("This is ++inserted++ and ==highlighted==.");
+        Assert.Contains("inserted", text);
+        Assert.Contains("highlighted", text);
+    }
+
+    [Fact]
+    public void Ordered_list_honors_start_number()
+    {
+        var lines = Render.Lines("5. fifth\n6. sixth\n7. seventh");
+        Assert.Contains(lines, l => l.TrimStart().StartsWith("5. fifth"));
+        Assert.Contains(lines, l => l.TrimStart().StartsWith("6. sixth"));
+        Assert.Contains(lines, l => l.TrimStart().StartsWith("7. seventh"));
+    }
+
+    [Fact]
+    public void Math_matrix_environment_lays_out_rows()
+    {
+        var md = "$$\n\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}\n$$";
+        var lines = Render.Lines(md);
+        // Two matrix rows: one containing a and b, one containing c and d.
+        Assert.Contains(lines, l => l.Contains("a") && l.Contains("b"));
+        Assert.Contains(lines, l => l.Contains("c") && l.Contains("d"));
+    }
+
+    [Fact]
+    public void Custom_container_shows_its_label()
+    {
+        var md = "::: warning\nBe careful.\n:::";
+        var text = Render.Text(md);
+        Assert.Contains("Warning", text);
+        Assert.Contains("Be careful.", text);
+    }
 }

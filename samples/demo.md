@@ -29,8 +29,21 @@ Welcome to **mdv**, a terminal-first Markdown viewer with an optional browser mo
 This paragraph mixes **bold**, *italic*, ***bold italic***, `inline code`, ~~strikethrough~~, and a
 [regular link](https://opencode.ai). Emoji shortcodes work too: :rocket: :sparkles: :tada:.
 
+Extended emphasis: water is H~2~O (subscript), Einstein wrote E = mc^2^ (superscript),
+this is ++inserted++ text, and this is ==highlighted== text. Abbreviations like HTML and CSS
+keep their term and are underlined.
+
+*[HTML]: HyperText Markup Language
+*[CSS]: Cascading Style Sheets
+
 Two trailing spaces force a hard line break —
 this text starts on a brand-new line.
+
+Ordered lists can start at any number:
+
+5. Fifth step
+6. Sixth step
+7. Seventh step
 
 ## GitHub alerts
 
@@ -394,6 +407,16 @@ The quadratic formula is $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$.
 
 $$
 \int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}
+$$
+
+Environments (matrices, cases, aligned) lay out across rows and columns:
+
+$$
+\begin{pmatrix} a & b \\ c & d \end{pmatrix}
+$$
+
+$$
+\begin{cases} x + y = 1 \\ 2x - y = 0 \end{cases}
 $$
 
 ## Images & media

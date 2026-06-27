@@ -110,7 +110,8 @@ public sealed partial class MarkdownTerminalRenderer
     // ---------------- lists ----------------
     private void RenderList(ListBlock list, int indent)
     {
-        int number = 1;
+        // Ordered lists honor their start number (e.g. "5." continues from 5).
+        int number = list.IsOrdered && int.TryParse(list.OrderedStart, out var start) ? start : 1;
         foreach (var item in list)
         {
             if (item is not ListItemBlock listItem) continue;
@@ -390,18 +391,82 @@ public sealed partial class MarkdownTerminalRenderer
         AddBlank();
     }
 
+    // ---------------- raw HTML blocks ----------------
+    /// <summary>
+    /// Renders a raw HTML block. We don't render markup, but we must not silently drop the block's
+    /// text content (a common "where did my content go" bug). We strip tags and emit the remaining
+    /// text dimmed; if there's no visible text (e.g. a comment), nothing is shown.
+    /// </summary>
+    private void RenderHtmlBlock(Markdig.Syntax.HtmlBlock html, int indent)
+    {
+        var raw = html.Lines.ToString();
+        var text = StripHtmlTags(raw);
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        EnsureBlankBefore();
+        // Collapse internal whitespace runs so block-level layout doesn't leave odd gaps.
+        var collapsed = System.Text.RegularExpressions.Regex.Replace(text, @"[ \t]+", " ").Trim();
+        EmitWrapped([new StyledSpan(collapsed, Theme.Muted, CellStyle.Italic)], indent);
+        AddBlank();
+    }
+
+    /// <summary>Removes HTML tags and decodes common entities, leaving readable text.</summary>
+    private static string StripHtmlTags(string html)
+    {
+        // Drop comments and <script>/<style> bodies entirely.
+        html = System.Text.RegularExpressions.Regex.Replace(html, "<!--.*?-->", " ",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, "<(script|style)[^>]*>.*?</\\1>", " ",
+            System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // Block-ish tags become line breaks so paragraphs/list items stay separated.
+        html = System.Text.RegularExpressions.Regex.Replace(html, "<(br|/p|/div|/li|/tr|/h[1-6])\\s*/?>", "\n",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        html = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", "");
+        return System.Net.WebUtility.HtmlDecode(html);
+    }
+
+    // ---------------- custom containers (:::) & figures ----------------
+    /// <summary>Renders a fenced custom container (<c>::: name</c>) with a colored gutter and the
+    /// container name as a label, similar to alerts.</summary>
+    private void RenderCustomContainer(Markdig.Extensions.CustomContainers.CustomContainer container, int indent)
+    {
+        EnsureBlankBefore();
+        var name = (container.Info ?? "").Trim();
+        var color = Theme.Accent;
+        if (!string.IsNullOrEmpty(name))
+            EmitWrapped([new StyledSpan(TitleCase(name), color, CellStyle.Bold)], indent + 2, gutterColor: color, gutter: "▌ ");
+        foreach (var child in container)
+        {
+            if (child is Markdig.Syntax.LeafBlock leaf && leaf.Inline is not null)
+                EmitWrapped(InlineToSpans(leaf.Inline, Theme.Text), indent + 2, gutterColor: color, gutter: "▌ ");
+            else
+                RenderBlock(child, indent + 2);
+        }
+        AddBlank();
+    }
+
+    /// <summary>Renders a figure caption in muted italic, distinct from body text.</summary>
+    private void RenderFigureCaption(Markdig.Extensions.Figures.FigureCaption caption, int indent)
+    {
+        if (caption.Inline is null) return;
+        var spans = new List<StyledSpan> { new("— ", Theme.Muted) };
+        spans.AddRange(InlineToSpans(caption.Inline, Theme.Muted, CellStyle.Italic));
+        EmitWrapped(spans, indent + 2);
+    }
+
     // ---------------- display math ($$...$$) ----------------
     private void RenderMathBlock(Markdig.Extensions.Mathematics.MathBlock math, int indent)
     {
         EnsureBlankBefore();
         var latex = math.Lines.ToString();
-        var rendered = MathRenderer.ToUnicode(latex);
-        foreach (var raw in rendered.Split('\n'))
+        var rows = MathRenderer.ToUnicodeBlock(latex);
+        // Center the block as a whole on its widest row.
+        int blockWidth = rows.Count == 0 ? 0 : rows.Max(r => r.Length);
+        int blockPad = Math.Max(indent + 2, (_width - blockWidth) / 2);
+        foreach (var raw in rows)
         {
-            // Center the equation within the content width.
-            int pad = Math.Max(indent + 2, (_width - raw.Length) / 2);
             var line = new DisplayLine();
-            line.Spans.Add(new StyledSpan(new string(' ', pad)));
+            line.Spans.Add(new StyledSpan(new string(' ', blockPad)));
             line.Spans.Add(new StyledSpan(raw, Theme.Heading));
             _lines.Add(line);
         }

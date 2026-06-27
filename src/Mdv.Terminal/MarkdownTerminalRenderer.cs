@@ -55,8 +55,11 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
             case CodeBlock code: RenderIndentedCode(code, indent); break;
             case Table table: RenderTable(table, indent); break;
             case ThematicBreakBlock: RenderRule(); break;
+            case Markdig.Syntax.HtmlBlock html: RenderHtmlBlock(html, indent); break;
             case Markdig.Extensions.Footnotes.FootnoteGroup footnotes: RenderFootnotes(footnotes); break;
             case Markdig.Extensions.DefinitionLists.DefinitionList defList: RenderDefinitionList(defList, indent); break;
+            case Markdig.Extensions.CustomContainers.CustomContainer container: RenderCustomContainer(container, indent); break;
+            case Markdig.Extensions.Figures.FigureCaption caption: RenderFigureCaption(caption, indent); break;
             case ContainerBlock generic:
                 foreach (var child in generic) RenderBlock(child, indent);
                 break;
@@ -253,9 +256,44 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
                 break;
             case EmphasisInline emphasis:
             {
-                var newStyle = style | (emphasis.DelimiterCount >= 2 ? CellStyle.Bold : CellStyle.Italic);
-                if (emphasis.DelimiterChar is '~') newStyle = style | CellStyle.Strikethrough;
-                foreach (var child in emphasis) AppendInline(child, spans, color, newStyle, linkId);
+                // GitHub/Markdig EmphasisExtras map several delimiters onto EmphasisInline:
+                //   *x* / _x_      → italic        **x** / __x__ → bold
+                //   ~~x~~          → strikethrough  ~x~          → subscript
+                //   ^x^            → superscript    ++x++        → inserted (underline)
+                //   ==x==          → marked / highlight (reverse video)
+                switch (emphasis.DelimiterChar, emphasis.DelimiterCount)
+                {
+                    case ('~', 1):  // subscript — convert inner text to Unicode subscript glyphs
+                        AppendScripted(emphasis, spans, color, style, linkId, subscript: true);
+                        break;
+                    case ('^', 1):  // superscript
+                        AppendScripted(emphasis, spans, color, style, linkId, subscript: false);
+                        break;
+                    case ('~', _): // ~~ (and longer) → strikethrough
+                    {
+                        var s = style | CellStyle.Strikethrough;
+                        foreach (var child in emphasis) AppendInline(child, spans, color, s, linkId);
+                        break;
+                    }
+                    case ('+', _): // ++inserted++ → underline
+                    {
+                        var s = style | CellStyle.Underline;
+                        foreach (var child in emphasis) AppendInline(child, spans, color, s, linkId);
+                        break;
+                    }
+                    case ('=', _): // ==marked== → highlight (reverse video so it reads on any theme)
+                    {
+                        var s = style | CellStyle.Reverse;
+                        foreach (var child in emphasis) AppendInline(child, spans, color, s, linkId);
+                        break;
+                    }
+                    default:
+                    {
+                        var s = style | (emphasis.DelimiterCount >= 2 ? CellStyle.Bold : CellStyle.Italic);
+                        foreach (var child in emphasis) AppendInline(child, spans, color, s, linkId);
+                        break;
+                    }
+                }
                 break;
             }
             case CodeInline code:
@@ -297,6 +335,11 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
                 break;
             case Markdig.Extensions.Footnotes.FootnoteLink footnote:
                 AppendFootnoteRef(footnote, spans, style, linkId);
+                break;
+            case Markdig.Extensions.Abbreviations.AbbreviationInline abbr:
+                // The abbreviated term itself (otherwise it would vanish). The definition/title is
+                // shown once dimmed in parentheses so the expansion is visible in a terminal.
+                spans.Add(new StyledSpan(abbr.Abbreviation.Label ?? "", color, style | CellStyle.Underline, linkId));
                 break;
             case Markdig.Syntax.Inlines.HtmlInline:
                 // Raw inline HTML tags are dropped (we render Markdown, not markup). Text between
@@ -344,6 +387,14 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
         if (footnote.IsBackLink) return;   // we don't render the back-reference arrows
         int n = footnote.Footnote?.Order ?? footnote.Index + 1;
         spans.Add(new StyledSpan(ToSuperscript(n), theme.Accent, style | CellStyle.Bold, linkId));
+    }
+
+    /// <summary>Renders sub/superscript emphasis (~x~ / ^x^) by converting the inner text to Unicode
+    /// super/subscript glyphs.</summary>
+    private void AppendScripted(EmphasisInline emphasis, List<StyledSpan> spans, Rgb color, CellStyle style, int? linkId, bool subscript)
+    {
+        var inner = GetInlineText(emphasis);
+        spans.Add(new StyledSpan(MathRenderer.ToScript(inner, superscript: !subscript), color, style, linkId));
     }
 
     /// <summary>Converts a non-negative integer to its Unicode superscript form.</summary>

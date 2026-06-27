@@ -12,7 +12,8 @@ public static class CodeHighlighter
 {
     private static readonly object Sync = new();
     private static RegistryOptions? _options;
-    private static Registry? _registry;
+    private static Registry? _registry;          // dark (DarkPlus) — also used for grammar lookup
+    private static Registry? _lightRegistry;     // light (LightPlus) — for color resolution on light themes
     private static readonly Dictionary<string, IGrammar?> GrammarCache = new(StringComparer.OrdinalIgnoreCase);
 
     public static List<List<StyledSpan>> Highlight(string code, string language, TerminalTheme theme)
@@ -56,9 +57,12 @@ public static class CodeHighlighter
     private static Rgb? ResolveColor(List<string> scopes, TerminalTheme theme)
     {
         EnsureInit();
-        if (_registry is null) return null;
+        // Use the theme that matches the terminal background so code stays legible: DarkPlus colors
+        // are designed for dark backgrounds and wash out on light, and vice versa.
+        var registry = theme.IsDark ? _registry : (_lightRegistry ?? _registry);
+        if (registry is null) return null;
 
-        var themeManager = _registry.GetTheme();
+        var themeManager = registry.GetTheme();
         var rules = themeManager.Match(scopes);
         if (rules is null) return null;
         foreach (var rule in rules)
@@ -126,6 +130,9 @@ public static class CodeHighlighter
             var options = new RegistryOptions(ThemeName.DarkPlus);
             _registry = new Registry(options);
             _options = options;
+            // A second registry with the light theme for color resolution on light terminals.
+            try { _lightRegistry = new Registry(new RegistryOptions(ThemeName.LightPlus)); }
+            catch { _lightRegistry = null; }
         }
     }
 }
