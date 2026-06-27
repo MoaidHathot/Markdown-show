@@ -14,6 +14,27 @@ public sealed class AnsiScreen : IDisposable
     private readonly Stream _stdout;
     private bool _restored;
 
+    // --- capture mode (dev/testing) ---
+    // When set, the screen renders to an in-memory buffer with a fixed size and performs no terminal
+    // I/O (no alt-screen, no Win32 calls). Used by the SixelView dev tool to rasterise overlays.
+    private readonly bool _capture;
+    private readonly int _capW;
+    private readonly int _capH;
+
+    /// <summary>Creates an in-memory capture screen of a fixed size (no terminal side effects).</summary>
+    public static AnsiScreen CreateCapture(int width, int height) => new(width, height);
+
+    private AnsiScreen(int width, int height)
+    {
+        _capture = true;
+        _capW = width;
+        _capH = height;
+        _stdout = Stream.Null;
+    }
+
+    /// <summary>The accumulated escape/text stream (capture mode only).</summary>
+    public string CaptureBuffer => _buffer.ToString();
+
     public AnsiScreen()
     {
         EnableVirtualTerminal();
@@ -43,8 +64,8 @@ public sealed class AnsiScreen : IDisposable
         RestoreInputMode();
     }
 
-    public int Width => Math.Max(20, Console.WindowWidth);
-    public int Height => Math.Max(6, Console.WindowHeight);
+    public int Width => _capture ? _capW : Math.Max(20, Console.WindowWidth);
+    public int Height => _capture ? _capH : Math.Max(6, Console.WindowHeight);
 
     public void BeginFrame() => _buffer.Clear();
 
@@ -120,6 +141,7 @@ public sealed class AnsiScreen : IDisposable
 
     public void Flush()
     {
+        if (_capture) return;   // keep the buffer; CaptureBuffer exposes it
         var bytes = Encoding.UTF8.GetBytes(_buffer.ToString());
         _stdout.Write(bytes, 0, bytes.Length);
         _stdout.Flush();
@@ -128,6 +150,7 @@ public sealed class AnsiScreen : IDisposable
 
     private void WriteRaw(string s)
     {
+        if (_capture) return;
         var bytes = Encoding.UTF8.GetBytes(s);
         var os = Console.OpenStandardOutput();
         os.Write(bytes, 0, bytes.Length);
@@ -136,7 +159,7 @@ public sealed class AnsiScreen : IDisposable
 
     public void Dispose()
     {
-        if (_restored) return;
+        if (_capture || _restored) return;
         _restored = true;
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
         Console.CancelKeyPress -= OnCancelKeyPress;

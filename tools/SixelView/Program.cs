@@ -41,6 +41,7 @@ internal static class Program
                 "--png" => DoPng(opt, bg, bgColor),
                 "--diagram" => await DoDiagramAsync(opt, bg, bgColor),
                 "--images" => await DoImagesAsync(opt, bg, bgColor),
+                "--overlay" => DoOverlay(opt, bgColor),
                 _ => Fail($"Unknown mode '{opt.Mode}'."),
             };
         }
@@ -52,6 +53,45 @@ internal static class Program
     }
 
     // ---- modes -----------------------------------------------------------------------------
+
+    private static int DoOverlay(Options opt, SKColor bgColor)
+    {
+        // opt.Input selects which overlay: "help" (default) or "toc".
+        string which = (opt.Input ?? "help").ToLowerInvariant();
+        int cols = opt.Cols > 0 ? opt.Cols : 100;
+        int rows = opt.OverlayRows > 0 ? opt.OverlayRows : 32;
+
+        string ansi;
+        if (which is "toc" or "contents")
+        {
+            var toc = new List<Mdv.Core.TocEntry>
+            {
+                new(1, "Introduction", "introduction", 1),
+                new(2, "Getting Started", "getting-started", 5),
+                new(2, "Installation", "installation", 12),
+                new(3, "Windows", "windows", 18),
+                new(3, "macOS & Linux", "macos-linux", 24),
+                new(1, "Features", "features", 30),
+                new(2, "Terminal Mode", "terminal-mode", 34),
+                new(2, "Browser Mode", "browser-mode", 48),
+                new(2, "Diagrams (mermaid & D2)", "diagrams", 60),
+                new(1, "Configuration", "configuration", 80),
+                new(2, "Themes", "themes", 84),
+                new(1, "License", "license", 120),
+            };
+            ansi = TerminalViewer.CaptureTocOverlay(opt.Dark, cols, rows, toc, opt.TocSelected);
+        }
+        else
+        {
+            ansi = TerminalViewer.CaptureHelpOverlay(opt.Dark, cols, rows);
+        }
+
+        var defBg = opt.Dark ? new SKColor(0x0d, 0x11, 0x17) : new SKColor(0xff, 0xff, 0xff);
+        var defFg = opt.Dark ? new SKColor(0xe6, 0xed, 0xf3) : new SKColor(0x1f, 0x23, 0x28);
+        using var bmp = AnsiGridRenderer.Render(ansi, cols, rows, defBg, defFg);
+        Console.WriteLine($"overlay '{which}' rendered {cols}x{rows} cells -> {bmp.Width}x{bmp.Height}px");
+        return Save(bmp, opt, $"overlay-{which}-{(opt.Dark ? "dark" : "light")}", sourceBytes: ansi.Length);
+    }
 
     private static int DoRaw(Options opt, SKColor bgColor)
     {
@@ -264,6 +304,8 @@ internal static class Program
         public int? CropRows;
         public Rgb? Background;
         public string? Out;
+        public int OverlayRows;     // grid height for --overlay (0 = default)
+        public int TocSelected;     // selected index for --overlay toc
 
         /// <summary>True for the inline-image mode (where the dark-transparent light-card backdrop applies).</summary>
         public bool IsImageMode => Mode is "--images";
@@ -280,12 +322,14 @@ internal static class Program
                 string? Next() => (i + 1 < args.Length) ? args[++i] : null;
                 switch (a)
                 {
-                    case "--raw": case "--png": case "--diagram": case "--images":
+                    case "--raw": case "--png": case "--diagram": case "--images": case "--overlay":
                         o.Mode = a; if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) o.Input = args[++i]; break;
                     case "--theme": o.Dark = (Next() ?? "dark").Equals("dark", StringComparison.OrdinalIgnoreCase); break;
                     case "--kind": o.Kind = (Next() ?? "mermaid").Equals("d2", StringComparison.OrdinalIgnoreCase) ? DiagramKind.D2 : DiagramKind.Mermaid; break;
                     case "--zoom": o.Zoom = int.Parse(Next() ?? "0"); break;
                     case "--cols": o.Cols = int.Parse(Next() ?? "120"); break;
+                    case "--rows": o.OverlayRows = int.Parse(Next() ?? "0"); break;
+                    case "--sel": o.TocSelected = int.Parse(Next() ?? "0"); break;
                     case "--cell-w": o.CellW = int.Parse(Next() ?? "10"); break;
                     case "--cell-h": o.CellH = int.Parse(Next() ?? "20"); break;
                     case "--crop-row": o.CropRow = int.Parse(Next() ?? "0"); break;

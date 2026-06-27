@@ -11,6 +11,25 @@ public readonly record struct Rgb(byte R, byte G, byte B)
         var value = Convert.ToInt32(hex, 16);
         return new Rgb((byte)(value >> 16), (byte)(value >> 8), (byte)value);
     }
+
+    /// <summary>Linearly interpolates toward <paramref name="other"/> by <paramref name="t"/> (0..1).</summary>
+    public Rgb Mix(Rgb other, double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        return new Rgb(
+            (byte)Math.Round(R + (other.R - R) * t),
+            (byte)Math.Round(G + (other.G - G) * t),
+            (byte)Math.Round(B + (other.B - B) * t));
+    }
+
+    /// <summary>Darkens toward black by <paramref name="amount"/> (0..1).</summary>
+    public Rgb Darken(double amount) => Mix(new Rgb(0, 0, 0), amount);
+
+    /// <summary>Lightens toward white by <paramref name="amount"/> (0..1).</summary>
+    public Rgb Lighten(double amount) => Mix(new Rgb(255, 255, 255), amount);
+
+    /// <summary>Perceived brightness (0..255), Rec. 601 luma.</summary>
+    public double Luma => 0.299 * R + 0.587 * G + 0.114 * B;
 }
 
 [Flags]
