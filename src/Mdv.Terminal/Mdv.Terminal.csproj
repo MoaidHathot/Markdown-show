@@ -12,4 +12,8 @@
     <PackageReference Include="TextMateSharp" Version="2.0.4" />
     <PackageReference Include="TextMateSharp.Grammars" Version="2.0.4" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mdv.Tests" />
+  </ItemGroup>
 </Project>

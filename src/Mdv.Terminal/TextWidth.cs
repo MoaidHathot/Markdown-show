@@ -29,6 +29,9 @@ internal static class TextWidth
         int cp = char.ConvertToUtf32(element, 0);
         if (cp == 0) return 0;
         if (IsZeroWidth(cp)) return 0;
+        // An emoji variation selector (U+FE0F) forces emoji presentation → wide, even for a base
+        // symbol that is narrow by default (e.g. "✔️" vs the plain "✔").
+        if (element.Contains('\uFE0F')) return 2;
         // Emoji presentation (incl. ZWJ sequences, flags, skin tones) render as 2 cells.
         if (IsEmoji(cp)) return 2;
         return IsWide(cp) ? 2 : 1;
@@ -51,14 +54,31 @@ internal static class TextWidth
         (cp >= 0xFE00 && cp <= 0xFE0F) ||            // variation selectors
         (cp >= 0xFE20 && cp <= 0xFE2F);              // combining half marks
 
+    // Only code points that are wide (2 cells) by DEFAULT. Most of the Miscellaneous Symbols and
+    // Dingbats blocks (0x2600–0x27BF) are Narrow/Neutral text symbols rendered in one cell (e.g. ✓
+    // U+2713, ✗, arrows). Treating the whole block as wide mis-measured tables. These are the
+    // specific points/ranges with Unicode Emoji_Presentation=Yes (default-wide), per UTS #51.
     private static bool IsEmoji(int cp) =>
-        (cp >= 0x1F300 && cp <= 0x1FAFF) ||          // misc symbols & pictographs … symbols-extended-A
-        (cp >= 0x1F000 && cp <= 0x1F0FF) ||          // mahjong/dominoes/cards
-        (cp >= 0x2600 && cp <= 0x27BF) ||            // misc symbols + dingbats
-        (cp >= 0x1F1E6 && cp <= 0x1F1FF) ||          // regional indicators (flags)
-        cp == 0x2B50 || cp == 0x2B55 ||
-        cp == 0x231A || cp == 0x231B ||              // ⌚ ⌛ (emoji-presented technical symbols)
-        cp == 0x23E9 || cp == 0x23EA || cp == 0x23F0 || cp == 0x23F3;
+        (cp >= 0x1F000 && cp <= 0x1FAFF) ||          // emoji/pictographs in the SMP (all wide)
+        (cp >= 0x1F1E6 && cp <= 0x1F1FF) ||          // regional indicators (flags) — covered above too
+        cp is 0x231A or 0x231B ||
+        (cp >= 0x23E9 && cp <= 0x23EC) || cp is 0x23F0 or 0x23F3 ||
+        (cp >= 0x25FD && cp <= 0x25FE) ||
+        (cp >= 0x2614 && cp <= 0x2615) ||
+        (cp >= 0x2648 && cp <= 0x2653) ||
+        cp is 0x267F or 0x2693 or 0x26A1 ||
+        (cp >= 0x26AA && cp <= 0x26AB) ||
+        (cp >= 0x26BD && cp <= 0x26BE) ||
+        (cp >= 0x26C4 && cp <= 0x26C5) ||
+        cp is 0x26CE or 0x26D4 or 0x26EA ||
+        (cp >= 0x26F2 && cp <= 0x26F3) || cp is 0x26F5 or 0x26FA or 0x26FD ||
+        cp is 0x2705 ||
+        (cp >= 0x270A && cp <= 0x270B) ||
+        cp is 0x2728 or 0x274C or 0x274E ||
+        (cp >= 0x2753 && cp <= 0x2755) || cp is 0x2757 ||
+        (cp >= 0x2795 && cp <= 0x2797) ||
+        cp is 0x27B0 or 0x27BF ||
+        (cp >= 0x2B1B && cp <= 0x2B1C) || cp is 0x2B50 or 0x2B55;
 
     private static bool IsWide(int cp) =>
         (cp >= 0x1100 && cp <= 0x115F) ||            // Hangul Jamo
