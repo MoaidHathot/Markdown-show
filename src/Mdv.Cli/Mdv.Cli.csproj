@@ -20,6 +20,15 @@
     <PackageProjectUrl>https://github.com/MoaidHathot/mdv</PackageProjectUrl>
     <RepositoryUrl>https://github.com/MoaidHathot/mdv</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+
+    <!-- Keep the packed tool small: no debug symbols and no PDBs from our own assemblies. The
+         transitive native dependencies (SkiaSharp) otherwise ship ~300 MB of .pdb files, which the
+         TrimToolPublishOutput target below also strips. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <IncludeSymbols>false</IncludeSymbols>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>$(NoWarn);NU5111</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,5 +49,40 @@
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" Condition="Exists('..\..\README.md')" />
   </ItemGroup>
+
+  <!--
+    Trim the packed tool. A .NET tool bundles the full publish output for every runtime, which for
+    our dependencies means ~300 MB of SkiaSharp .pdb symbols, ~100 MB of Playwright's bundled Node
+    driver, and SkiaSharp native libraries for ~21 runtimes (incl. Android/iOS-Catalyst/RISC-V/
+    LoongArch and exotic musl arches that a desktop CLI never targets). We strip PDBs and Playwright
+    content, and keep only the mainstream desktop runtimes below. This takes the package from
+    ~210 MB down to a reasonable size. Chromium for mermaid is still provisioned at runtime.
+  -->
+  <PropertyGroup>
+    <!-- Pipe-delimited so we can do a simple substring membership test per file. -->
+    <_KeepRuntimes>|win-x64|win-x86|win-arm64|linux-x64|linux-arm64|linux-musl-x64|linux-musl-arm64|osx|osx-x64|osx-arm64|</_KeepRuntimes>
+  </PropertyGroup>
+
+  <Target Name="TrimToolPublishOutput" BeforeTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <!-- Normalize the relative path once for matching. -->
+      <ResolvedFileToPublish>
+        <_RelPath>$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/'))</_RelPath>
+      </ResolvedFileToPublish>
+
+      <!-- Debug symbols: never needed at runtime. -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+
+      <!-- Playwright's bundled Node driver + browser-install scripts. -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(_RelPath)').Contains('.playwright/'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(_RelPath)').Contains('/node/'))" />
+
+      <!-- Native libs for runtimes we don't ship: remove any runtimes/<rid>/ file whose <rid> is
+           not in _KeepRuntimes. The condition fires only for runtimes/ paths. -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(_RelPath)').StartsWith('runtimes/')) and
+                   !$(_KeepRuntimes.Contains('|$([System.String]::Copy('%(_RelPath)').Split('/')[1])|'))" />
+    </ItemGroup>
+  </Target>
 
 </Project>
