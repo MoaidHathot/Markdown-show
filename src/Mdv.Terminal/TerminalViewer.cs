@@ -50,7 +50,9 @@ public sealed partial class TerminalViewer : IAsyncDisposable
     private int _scroll;
     private bool _dirty = true;
     private volatile bool _running = true;
+    private readonly CancellationTokenSource _lifetimeCts = new();   // cancels in-flight renders on exit
     private bool _selectionMode;   // when true, mouse capture is off so the terminal can select text
+    private string? _pendingExternalUrl;   // remote URL awaiting y/N confirmation before opening
 
     // Pending vim 'g' prefix (for the gg = go-to-top motion).
     private bool _pendingGPrefix;
@@ -180,6 +182,7 @@ public sealed partial class TerminalViewer : IAsyncDisposable
 
     private static Markdig.MarkdownPipeline BuildPipeline() =>
         new Markdig.MarkdownPipelineBuilder()
+            .UseYamlFrontMatter()          // strip leading YAML front matter (don't render it as content)
             .UseAdvancedExtensions()
             .UseEmojiAndSmiley()
             .UseMathematics()
@@ -188,8 +191,10 @@ public sealed partial class TerminalViewer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _watcher.Dispose();
-        await _imageLoader.DisposeAsync();
+        try { _lifetimeCts.Cancel(); } catch { /* ignore */ }
+        _watcher?.Dispose();
+        if (_imageLoader is not null) await _imageLoader.DisposeAsync();
+        _lifetimeCts.Dispose();
     }
 
     private void SetStatus(string message, double seconds = 3)

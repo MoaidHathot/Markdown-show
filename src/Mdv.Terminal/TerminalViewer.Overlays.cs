@@ -1,4 +1,5 @@
 using System.Text;
+using Markdig;
 using Mdv.Core;
 
 namespace Mdv.Terminal;
@@ -491,5 +492,26 @@ public sealed partial class TerminalViewer
                 DrawLine(_lines[lineIndex], lineIndex, row, _screen.Width);
         }
         _screen.Reset();
+    }
+
+    /// <summary>
+    /// Dev/testing: renders a full Markdown document to an ANSI string (no Sixel — diagram/image
+    /// anchors show as their caption rows). Used by the SixelView tool to verify document rendering.
+    /// </summary>
+    public static string CaptureDocument(bool dark, int width, int height, string markdown, int scroll = 0)
+    {
+        var v = new TerminalViewer(dark, width, height, []);
+        var pipeline = new MarkdownPipelineBuilder()
+            .UseYamlFrontMatter().UseAdvancedExtensions().UseEmojiAndSmiley()
+            .UseMathematics().UseGenericAttributes().Build();
+        var doc = Markdown.Parse(markdown, pipeline);
+        var renderer = new MarkdownTerminalRenderer(v._theme, width - 1);
+        var result = renderer.Render(doc, null);
+        v._lines = result.Lines;
+        v._scroll = Math.Clamp(scroll, 0, Math.Max(0, v._lines.Count - 1));
+        v._screen.BeginFrame();
+        v.PaintBaseForCapture();
+        v._screen.Reset();
+        return v._screen.CaptureBuffer;
     }
 }

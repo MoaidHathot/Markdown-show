@@ -201,7 +201,13 @@ public sealed class ImageLoader : IAsyncDisposable
         {
             var baseDir = Path.GetDirectoryName(currentFile) ?? _rootDirectory;
             var full = Path.GetFullPath(Uri.UnescapeDataString(url.Split('#')[0]), baseDir);
-            if (!full.StartsWith(_rootDirectory, StringComparison.OrdinalIgnoreCase)) return null;
+            // Use a trailing-separator boundary so a sibling dir can't slip past a bare prefix check.
+            var rootWithSep = _rootDirectory.EndsWith(Path.DirectorySeparatorChar)
+                ? _rootDirectory
+                : _rootDirectory + Path.DirectorySeparatorChar;
+            bool inside = string.Equals(full, _rootDirectory, StringComparison.OrdinalIgnoreCase)
+                          || full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase);
+            if (!inside) return null;
             return File.Exists(full) ? full : null;
         }
         catch { return null; }

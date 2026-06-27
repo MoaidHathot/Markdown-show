@@ -78,4 +78,41 @@ internal sealed class DiagramCache(string cacheDirectory)
         }
         return result;
     }
+
+    /// <summary>
+    /// Best-effort cleanup of the on-disk cache so it can't grow without bound across versions:
+    /// removes files not accessed in the last 30 days, and if the total still exceeds a size cap,
+    /// deletes the oldest files until it's under the cap. Runs once at startup; failures are ignored.
+    /// </summary>
+    public void EvictOldEntries(long maxBytes = 200L * 1024 * 1024, int maxAgeDays = 30)
+    {
+        try
+        {
+            if (!Directory.Exists(_dir)) return;
+            var files = new DirectoryInfo(_dir).GetFiles("*", SearchOption.TopDirectoryOnly)
+                .OrderBy(f => f.LastAccessTimeUtc)
+                .ToList();
+
+            var cutoff = DateTime.UtcNow.AddDays(-maxAgeDays);
+            foreach (var f in files.ToList())
+            {
+                if (f.LastAccessTimeUtc < cutoff)
+                {
+                    try { f.Delete(); files.Remove(f); } catch { /* ignore */ }
+                }
+            }
+
+            long total = files.Sum(f => f.Length);
+            int i = 0;
+            while (total > maxBytes && i < files.Count)
+            {
+                try { total -= files[i].Length; files[i].Delete(); } catch { /* ignore */ }
+                i++;
+            }
+        }
+        catch
+        {
+            // Eviction is non-critical.
+        }
+    }
 }

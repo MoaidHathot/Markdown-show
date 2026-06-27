@@ -74,7 +74,13 @@ public sealed class LinkResolver(string rootDirectory)
     public bool IsInsideRoot(string absolutePath)
     {
         var full = Path.GetFullPath(absolutePath);
-        return full.StartsWith(Root, StringComparison.OrdinalIgnoreCase);
+        // Compare with a trailing separator so a sibling like "/docs-secret" is NOT treated as
+        // inside "/docs" (a bare prefix check would wrongly accept it).
+        var rootWithSep = Root.EndsWith(Path.DirectorySeparatorChar)
+            ? Root
+            : Root + Path.DirectorySeparatorChar;
+        return string.Equals(full, Root, StringComparison.OrdinalIgnoreCase)
+               || full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsExternal(string target) =>

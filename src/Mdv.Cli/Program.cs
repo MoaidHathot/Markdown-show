@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Diagnostics;
+using System.Reflection;
 using Mdv.Core;
 using Mdv.Diagrams;
 using Mdv.Terminal;
@@ -32,15 +33,21 @@ var themeOption = new Option<string>("--theme")
     Description = "Color theme: dark, light, or auto.",
     DefaultValueFactory = _ => "auto",
 };
+themeOption.AcceptOnlyFromAmong("dark", "light", "auto");
 var backgroundOption = new Option<string>("--background", ["--bg"])
 {
     Description = "Background fill: 'solid' paints a solid themed background (overrides terminal transparency); 'terminal' lets the terminal background show through.",
     DefaultValueFactory = _ => "terminal",
 };
+backgroundOption.AcceptOnlyFromAmong("solid", "terminal", "opaque", "on", "off");
 var d2PathOption = new Option<string?>("--d2-path")
 {
     Description = "Explicit path to the d2 executable (defaults to 'd2' on PATH).",
 };
+
+var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+              ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString()
+              ?? "0.0.0";
 
 var root = new RootCommand("mdv — a terminal-first Markdown viewer with live reload, search, [[_TOC_]], mermaid and D2 diagrams, and an optional browser mode.")
 {
@@ -61,7 +68,7 @@ root.SetAction(async (parse, ct) =>
     if (!File.Exists(full))
     {
         Console.Error.WriteLine($"mdv: file not found: {file}");
-        return 1;
+        return 2;
     }
 
     var browser = parse.GetValue(browserOption);
@@ -71,6 +78,14 @@ root.SetAction(async (parse, ct) =>
     var themeStr = parse.GetValue(themeOption) ?? "auto";
     var backgroundStr = parse.GetValue(backgroundOption) ?? "terminal";
     var d2Path = parse.GetValue(d2PathOption);
+
+    if (port is < 0 or > 65535)
+    {
+        Console.Error.WriteLine($"mdv: --port must be between 0 and 65535 (got {port}).");
+        return 2;
+    }
+    if (browser && (bestEffort || backgroundStr is "solid" or "opaque" or "on"))
+        Console.Error.WriteLine("mdv: note — --best-effort and --background only affect terminal mode and are ignored with --browser.");
 
     var dark = ResolveDark(themeStr);
     var solidBackground = backgroundStr.Trim().ToLowerInvariant() is "solid" or "opaque" or "on";
@@ -90,11 +105,38 @@ root.SetAction(async (parse, ct) =>
         }
         return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, ct);
     }
+    catch (OperationCanceledException)
+    {
+        return 0;   // Ctrl+C / shutdown
+    }
+    catch (System.Net.Sockets.SocketException ex)
+    {
+        Console.Error.WriteLine($"mdv: could not start the browser server (port {port}): {ex.Message}");
+        return 1;
+    }
+    catch (IOException ex) when (browser)
+    {
+        Console.Error.WriteLine($"mdv: server error: {ex.Message}");
+        return 1;
+    }
+    catch (Exception ex)
+    {
+        // Last-resort handler: a concise message, not a stack trace.
+        Console.Error.WriteLine($"mdv: {ex.Message}");
+        return 1;
+    }
     finally
     {
         await diagrams.DisposeAsync();
     }
 });
+
+// --version: print the tool version and exit before any subcommand action runs.
+if (args.Length == 1 && args[0] is "--version" or "-v")
+{
+    Console.WriteLine($"mdv {version}");
+    return 0;
+}
 
 return await root.Parse(args).InvokeAsync();
 
@@ -102,8 +144,23 @@ static bool ResolveDark(string theme) => theme.ToLowerInvariant() switch
 {
     "light" => false,
     "dark" => true,
-    _ => true, // auto: terminals are usually dark; browser respects this too
+    _ => DetectDark(),   // auto
 };
+
+// Best-effort dark/light detection: honor COLORFGBG and common env hints; default to dark.
+static bool DetectDark()
+{
+    // COLORFGBG="fg;bg" — a bg index < 8 (or the literal 0) indicates a dark background.
+    var cfb = Environment.GetEnvironmentVariable("COLORFGBG");
+    if (!string.IsNullOrEmpty(cfb))
+    {
+        var parts = cfb.Split(';');
+        if (parts.Length >= 2 && int.TryParse(parts[^1], out var bg))
+            return bg <= 6 || bg == 0;
+    }
+    // Apple Terminal/light hints are unreliable; default to dark (most terminals are dark).
+    return true;
+}
 
 static async Task<int> RunBrowserAsync(string file, int port, bool noOpen, DiagramTheme theme, IDiagramRenderer diagrams, CancellationToken ct)
 {
@@ -130,6 +187,8 @@ static async Task<int> RunBrowserAsync(string file, int port, bool noOpen, Diagr
 
 static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme theme, IDiagramRenderer diagrams, int port, bool solidBackground, CancellationToken ct)
 {
+    // One-off browser server spun up by the viewer's 'o' action; tracked so we can dispose it.
+    WebViewerServer? sideServer = null;
     await using var viewer = new TerminalViewer(new TerminalViewerOptions
     {
         FilePath = file,
@@ -138,15 +197,22 @@ static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme the
         SolidBackground = solidBackground,
         OpenInBrowser = async path =>
         {
-            // Spin up a one-off browser server for the requested file and open it.
-            var server = new WebViewerServer(new WebViewerOptions { FilePath = path, Port = 0, Theme = theme }, diagrams);
-            await server.StartAsync();
-            OpenBrowser(server.Url);
+            // Reuse a single side server across 'o' presses instead of leaking one each time.
+            sideServer ??= new WebViewerServer(new WebViewerOptions { FilePath = path, Port = 0, Theme = theme }, diagrams);
+            await sideServer.StartAsync();
+            OpenBrowser(sideServer.Url);
         },
     }, diagrams);
 
-    await viewer.RunAsync();
-    return 0;
+    try
+    {
+        await viewer.RunAsync();
+        return 0;
+    }
+    finally
+    {
+        if (sideServer is not null) await sideServer.DisposeAsync();
+    }
 }
 
 static void OpenBrowser(string url)

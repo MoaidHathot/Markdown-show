@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/_mdv/app.css" />
 </head>
 <body>
+  <a href="#mdv-content" id="mdv-skip-link">Skip to content</a>
   <div id="mdv-layout">
     <aside id="mdv-sidebar">
       <div id="mdv-sidebar-head">
@@ -17,26 +18,26 @@
       <nav id="mdv-toc" aria-label="Table of contents"></nav>
     </aside>
     <main id="mdv-main">
-      <div id="mdv-toolbar">
-        <button id="mdv-toggle-sidebar" title="Toggle sidebar (t)">☰</button>
-        <input id="mdv-search" type="search" placeholder="Search (/ or Ctrl+F)…" autocomplete="off" />
-        <span id="mdv-search-count"></span>
-        <button id="mdv-search-prev" title="Previous (Shift+Enter)">▲</button>
-        <button id="mdv-search-next" title="Next (Enter)">▼</button>
+      <div id="mdv-toolbar" role="toolbar" aria-label="Document controls">
+        <button id="mdv-toggle-sidebar" type="button" title="Toggle sidebar (t)" aria-label="Toggle sidebar">☰</button>
+        <input id="mdv-search" type="search" placeholder="Search (/ or Ctrl+F)…" aria-label="Search document" autocomplete="off" />
+        <span id="mdv-search-count" aria-live="polite"></span>
+        <button id="mdv-search-prev" type="button" title="Previous (Shift+Enter)" aria-label="Previous match">▲</button>
+        <button id="mdv-search-next" type="button" title="Next (Enter)" aria-label="Next match">▼</button>
         <span class="mdv-spacer"></span>
-        <button id="mdv-toggle-zen" title="Zen mode (z)">⛶</button>
-        <button id="mdv-theme-toggle" title="Toggle theme ([)">◐</button>
-        <button id="mdv-back" title="Back (Alt+←)">←</button>
-        <button id="mdv-forward" title="Forward (Alt+→)">→</button>
+        <button id="mdv-toggle-zen" type="button" title="Zen mode (z)" aria-label="Toggle zen mode">⛶</button>
+        <button id="mdv-theme-toggle" type="button" title="Toggle theme ([)" aria-label="Toggle light/dark theme">◐</button>
+        <button id="mdv-back" type="button" title="Back (Alt+←)" aria-label="Go back">←</button>
+        <button id="mdv-forward" type="button" title="Forward (Alt+→)" aria-label="Go forward">→</button>
       </div>
-      <article id="mdv-content">__BODY__</article>
+      <article id="mdv-content" tabindex="-1">__BODY__</article>
     </main>
   </div>
-  <div id="mdv-status" class="mdv-hidden"><span id="mdv-status-text"></span></div>
+  <div id="mdv-status" class="mdv-hidden" role="status" aria-live="polite"><span id="mdv-status-text"></span></div>
 
   <div id="mdv-help-overlay" class="mdv-hidden" role="dialog" aria-modal="true" aria-label="Keybindings">
     <div id="mdv-help-panel">
-      <div id="mdv-help-head">Keybindings <span id="mdv-help-close" title="Close (Esc)">×</span></div>
+      <div id="mdv-help-head">Keybindings <button id="mdv-help-close" type="button" title="Close (Esc)" aria-label="Close keybindings">×</button></div>
       <div id="mdv-help-body"></div>
       <div id="mdv-help-foot">press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>
     </div>

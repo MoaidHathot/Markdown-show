@@ -28,12 +28,16 @@ public sealed class DiagramRenderer : IDiagramRenderer
     private readonly MermaidRenderer? _mermaid;
     private readonly bool _bestEffort;
     private readonly ConcurrentDictionary<string, Task<DiagramResult>> _inflight = new();
+    // Cap concurrent renders so a document with many diagrams can't spawn an unbounded number of
+    // Chromium pages / d2 processes at once (memory spike protection).
+    private readonly SemaphoreSlim _renderGate = new(Math.Max(2, Environment.ProcessorCount / 2));
 
     public DiagramRenderer(DiagramRendererOptions? options = null)
     {
         options ??= new DiagramRendererOptions();
         _bestEffort = options.BestEffort;
         _cache = new DiagramCache(options.CacheDirectory);
+        _cache.EvictOldEntries();   // best-effort cleanup of orphaned/old cache files at startup
         _d2 = new D2Renderer(options.D2Path);
         _mermaid = options.BestEffort ? null : new MermaidRenderer();
     }
@@ -56,6 +60,7 @@ public sealed class DiagramRenderer : IDiagramRenderer
     private async Task<DiagramResult> RenderUncachedAsync(
         DiagramRequest request, DiagramTheme theme, string composedKey, CancellationToken ct)
     {
+        await _renderGate.WaitAsync(ct);
         try
         {
             DiagramResult result = request.Kind switch
@@ -68,6 +73,7 @@ public sealed class DiagramRenderer : IDiagramRenderer
         }
         finally
         {
+            _renderGate.Release();
             _inflight.TryRemove(composedKey, out _);
         }
     }
@@ -85,5 +91,6 @@ public sealed class DiagramRenderer : IDiagramRenderer
     public async ValueTask DisposeAsync()
     {
         if (_mermaid is not null) await _mermaid.DisposeAsync();
+        _renderGate.Dispose();
     }
 }

@@ -437,11 +437,28 @@ function buildHelp() {
     body.appendChild(group);
   }
 }
+let helpLastFocus = null;
 function toggleHelp(force) {
   buildHelp();
   const show = force ?? helpOverlay.classList.contains("mdv-hidden");
   helpOverlay.classList.toggle("mdv-hidden", !show);
+  if (show) {
+    helpLastFocus = document.activeElement;
+    document.getElementById("mdv-help-close")?.focus();
+  } else if (helpLastFocus && helpLastFocus.focus) {
+    helpLastFocus.focus();
+    helpLastFocus = null;
+  }
 }
+// Trap focus inside the help dialog while it's open.
+helpOverlay?.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || helpOverlay.classList.contains("mdv-hidden")) return;
+  const focusable = helpOverlay.querySelectorAll("button, [href], input, [tabindex]:not([tabindex='-1'])");
+  if (focusable.length === 0) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
 helpOverlay?.addEventListener("click", (e) => { if (e.target === helpOverlay) toggleHelp(false); });
 document.getElementById("mdv-help-close")?.addEventListener("click", () => toggleHelp(false));
 

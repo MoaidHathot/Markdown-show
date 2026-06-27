@@ -20,6 +20,7 @@ public sealed class MarkdownRenderer
     public MarkdownRenderer()
     {
         _pipeline = new MarkdownPipelineBuilder()
+            .UseYamlFrontMatter()          // strip leading ---\n...\n--- so it doesn't leak as content
             .UseAdvancedExtensions()       // tables, footnotes, task lists, alerts, etc.
             .UseAutoIdentifiers(AutoIdentifierOptions.GitHub) // stable heading ids for TOC + anchors
             .UseEmojiAndSmiley()

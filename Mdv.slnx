@@ -6,4 +6,7 @@
     <Project Path="src/Mdv.Terminal/Mdv.Terminal.csproj" />
     <Project Path="src/Mdv.Web/Mdv.Web.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Mdv.Tests/Mdv.Tests.csproj" />
+  </Folder>
 </Solution>

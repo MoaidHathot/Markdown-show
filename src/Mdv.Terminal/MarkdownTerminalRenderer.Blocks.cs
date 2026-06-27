@@ -1,3 +1,4 @@
+using Markdig.Extensions.Alerts;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Mdv.Core;
@@ -40,6 +41,25 @@ public sealed partial class MarkdownTerminalRenderer
             {
                 if (token == "\n") { firstLineOfBlock = false; Flush(); continue; }
                 int tokenLen = token.Length;
+
+                // A single token longer than the whole line (e.g. a long URL or path) would otherwise
+                // be clipped at the screen edge. Hard-break it across lines at character boundaries.
+                if (tokenLen > max && token.Trim().Length > 0)
+                {
+                    if (used > 0) { firstLineOfBlock = false; Flush(); }
+                    int pos = 0;
+                    while (pos < token.Length)
+                    {
+                        int take = Math.Min(max - used, token.Length - pos);
+                        if (take <= 0) { firstLineOfBlock = false; Flush(); continue; }
+                        current.Spans.Add(span with { Text = token.Substring(pos, take) });
+                        used += take;
+                        pos += take;
+                        if (used >= max && pos < token.Length) { firstLineOfBlock = false; Flush(); }
+                    }
+                    continue;
+                }
+
                 if (used + tokenLen > max && used > 0)
                 {
                     firstLineOfBlock = false;
@@ -129,6 +149,126 @@ public sealed partial class MarkdownTerminalRenderer
             else
             {
                 RenderBlock(child, indent + 2);
+            }
+        }
+        AddBlank();
+    }
+
+    /// <summary>
+    /// Renders a GitHub-style alert ([!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION]) with a
+    /// colored gutter, an icon + title header, and the body — matching the browser's alert styling.
+    /// </summary>
+    private void RenderAlert(AlertBlock alert, int indent)
+    {
+        EnsureBlankBefore();
+        var kind = alert.Kind.ToString().ToUpperInvariant();
+        (string icon, string title, Rgb color) = kind switch
+        {
+            "NOTE" => ("ℹ", "Note", Theme.IsDark ? Rgb.FromHex("#4493f8") : Rgb.FromHex("#0969da")),
+            "TIP" => ("✔", "Tip", Theme.IsDark ? Rgb.FromHex("#3fb950") : Rgb.FromHex("#1a7f37")),
+            "IMPORTANT" => ("◆", "Important", Theme.IsDark ? Rgb.FromHex("#ab7df8") : Rgb.FromHex("#8250df")),
+            "WARNING" => ("⚠", "Warning", Theme.IsDark ? Rgb.FromHex("#d29922") : Rgb.FromHex("#9a6700")),
+            "CAUTION" => ("⛔", "Caution", Theme.IsDark ? Rgb.FromHex("#f85149") : Rgb.FromHex("#cf222e")),
+            _ => ("▌", TitleCase(kind), Theme.Accent),
+        };
+
+
+        // Header: icon + bold title in the alert color.
+        var header = new List<StyledSpan>
+        {
+            new(icon + " ", color, CellStyle.Bold),
+            new(title, color, CellStyle.Bold),
+        };
+        EmitWrapped(header, indent + 2, gutterColor: color, gutter: "▌ ");
+
+        // Body: each child block, with the colored gutter continued.
+        foreach (var child in alert)
+        {
+            if (child is LeafBlock leaf && leaf.Inline is not null)
+            {
+                var spans = InlineToSpans(leaf.Inline, Theme.Text);
+                EmitWrapped(spans, indent + 2, gutterColor: color, gutter: "▌ ");
+            }
+            else
+            {
+                RenderBlock(child, indent + 2);
+            }
+        }
+        AddBlank();
+    }
+
+    private static string TitleCase(string s) =>
+        string.IsNullOrEmpty(s) ? "Note" : char.ToUpperInvariant(s[0]) + s[1..].ToLowerInvariant();
+
+    // ---------------- footnotes ----------------
+    /// <summary>Renders the footnote definitions at the end of the document: a labeled rule, then a
+    /// numbered list where each entry is "ⁿ. body" (the same numbers used by the inline references).</summary>
+    private void RenderFootnotes(Markdig.Extensions.Footnotes.FootnoteGroup group)
+    {
+        var notes = group.OfType<Markdig.Extensions.Footnotes.Footnote>().OrderBy(f => f.Order).ToList();
+        if (notes.Count == 0) return;
+
+        EnsureBlankBefore();
+        // A short labeled separator: ── Footnotes ───
+        var sep = new DisplayLine();
+        int dash = Math.Max(0, Math.Min(_width - 1, 40) - " Footnotes ".Length);
+        sep.Spans.Add(new StyledSpan("── ", Theme.Rule));
+        sep.Spans.Add(new StyledSpan("Footnotes", Theme.Muted, CellStyle.Bold));
+        sep.Spans.Add(new StyledSpan(" " + new string('─', dash), Theme.Rule));
+        _lines.Add(sep);
+        AddBlank();
+
+        foreach (var note in notes)
+        {
+            string num = note.Order + ". ";
+            bool first = true;
+            foreach (var child in note)
+            {
+                if (child is Markdig.Syntax.LeafBlock leaf && leaf.Inline is not null)
+                {
+                    var spans = new List<StyledSpan>
+                    {
+                        new(first ? num : new string(' ', num.Length), Theme.Accent, CellStyle.Bold),
+                    };
+                    spans.AddRange(InlineToSpans(leaf.Inline, Theme.Text));
+                    EmitWrapped(spans, 2);
+                    first = false;
+                }
+                else
+                {
+                    RenderBlock(child, 2 + num.Length);
+                }
+            }
+        }
+        AddBlank();
+    }
+
+    // ---------------- definition lists ----------------
+    /// <summary>Renders a definition list: each term is bold, and its definitions are indented and
+    /// prefixed with a ':' marker (like the Markdown source), so terms and definitions are distinct.</summary>
+    private void RenderDefinitionList(Markdig.Extensions.DefinitionLists.DefinitionList list, int indent)
+    {
+        EnsureBlankBefore();
+        foreach (var itemBlock in list)
+        {
+            if (itemBlock is not Markdig.Extensions.DefinitionLists.DefinitionItem item) continue;
+            foreach (var child in item)
+            {
+                if (child is Markdig.Extensions.DefinitionLists.DefinitionTerm term && term.Inline is not null)
+                {
+                    var spans = InlineToSpans(term.Inline, Theme.Heading, CellStyle.Bold);
+                    EmitWrapped(spans, indent);
+                }
+                else if (child is Markdig.Syntax.LeafBlock leaf && leaf.Inline is not null)
+                {
+                    var spans = new List<StyledSpan> { new(": ", Theme.Accent) };
+                    spans.AddRange(InlineToSpans(leaf.Inline, Theme.Text));
+                    EmitWrapped(spans, indent + 2);
+                }
+                else
+                {
+                    RenderBlock(child, indent + 2);
+                }
             }
         }
         AddBlank();

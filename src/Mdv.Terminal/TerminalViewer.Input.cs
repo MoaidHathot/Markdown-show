@@ -29,7 +29,7 @@ public sealed partial class TerminalViewer
             var req = request;
             _ = Task.Run(async () =>
             {
-                var result = await _diagrams.RenderAsync(req, _diagramTheme);
+                var result = await _diagrams.RenderAsync(req, _diagramTheme, _lifetimeCts.Token);
                 lock (_stateLock)
                 {
                     // Only replace if we got a good render (keeps the old image visible on failure).
@@ -38,9 +38,12 @@ public sealed partial class TerminalViewer
                         _diagramResults[key] = result;
                         ReserveDiagramRows(key, result);
                     }
-                    else if (!_diagramResults.ContainsKey(key))
+                    else if (!_diagramResults.ContainsKey(key) || _diagramResults[key].Status != DiagramStatus.Ready)
                     {
+                        // No good image to fall back to: show the error inline so the user knows why
+                        // the diagram is blank (e.g. d2 missing, Chromium download failed).
                         _diagramResults[key] = result;
+                        ShowDiagramError(key, result.Error);
                     }
                     ClearDiagramCaches();
                     _forceHardClear = true;
@@ -147,11 +150,95 @@ public sealed partial class TerminalViewer
         _lines = list;
     }
 
+    /// <summary>
+    /// Renders a failed diagram's error inline: recolours each anchor caption red and inserts the
+    /// wrapped error message on the reserved rows beneath it, so the user sees why nothing rendered.
+    /// </summary>
+    private void ShowDiagramError(string key, string? error)
+    {
+        var list = _lines as List<DisplayLine> ?? _lines.ToList();
+        var msg = string.IsNullOrWhiteSpace(error) ? "diagram could not be rendered" : error!.Trim();
+
+        int width = Math.Max(20, _screen.Width - 6);
+        var wrapped = WrapPlain(msg, width);
+        var errColor = _theme.IsDark ? Rgb.FromHex("#f08c8c") : Rgb.FromHex("#cf222e");
+        string reserveTag = "reserve:" + key;
+
+        var anchors = new List<int>();
+        for (int i = 0; i < list.Count; i++)
+            if (list[i].DiagramKey == key) anchors.Add(i);
+
+        for (int a = anchors.Count - 1; a >= 0; a--)
+        {
+            int anchor = anchors[a];
+            // Recolour the caption to signal failure.
+            var cap = list[anchor];
+            cap.Spans.Clear();
+            cap.Spans.Add(new StyledSpan("✖ ", errColor, CellStyle.Bold));
+            cap.Spans.Add(new StyledSpan("diagram error", errColor, CellStyle.Bold));
+
+            // Remove existing reserved rows for this anchor, then insert the error lines.
+            int existing = 0;
+            while (anchor + 1 + existing < list.Count && list[anchor + 1 + existing].DiagramKey == reserveTag) existing++;
+            for (int i = 0; i < existing; i++) list.RemoveAt(anchor + 1);
+
+            for (int i = wrapped.Count - 1; i >= 0; i--)
+            {
+                var line = new DisplayLine { DiagramKey = reserveTag };
+                line.Spans.Add(new StyledSpan("  " + wrapped[i], _theme.Muted));
+                list.Insert(anchor + 1, line);
+            }
+            // Keep the viewport stable if rows were added above the current top.
+            int delta = wrapped.Count - existing;
+            if (delta != 0 && anchor < _scroll) _scroll = Math.Max(0, _scroll + delta);
+        }
+        _lines = list;
+    }
+
+    /// <summary>Greedy word-wrap of a plain string to the given width.</summary>
+    private static List<string> WrapPlain(string text, int width)
+    {
+        var lines = new List<string>();
+        foreach (var rawLine in text.Replace("\r", "").Split('\n'))
+        {
+            var words = rawLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0) { lines.Add(""); continue; }
+            var sb = new System.Text.StringBuilder();
+            foreach (var w in words)
+            {
+                if (sb.Length == 0) sb.Append(w);
+                else if (sb.Length + 1 + w.Length <= width) { sb.Append(' ').Append(w); }
+                else { lines.Add(sb.ToString()); sb.Clear(); sb.Append(w); }
+                while (sb.Length > width) { lines.Add(sb.ToString(0, width)); sb.Remove(0, width); }
+            }
+            if (sb.Length > 0) lines.Add(sb.ToString());
+        }
+        return lines;
+    }
+
     // ---------------- input ----------------
     private void HandleKeyEvent(KeyEvent key)
     {
         if (_searchMode) { HandleSearchKey(key); return; }
         if (_tocMode) { HandleTocKey(key); return; }
+        if (_pendingExternalUrl is not null)
+        {
+            // Awaiting confirmation to open a remote link.
+            char c = key.Kind == KeyKind.Char ? char.ToLowerInvariant(key.Char) : '\0';
+            var url = _pendingExternalUrl;
+            _pendingExternalUrl = null;
+            _dirty = true;
+            if (c == 'y')
+            {
+                OpenUrl(url!);
+                SetStatus("Opened: " + url);
+            }
+            else
+            {
+                SetStatus("Cancelled");
+            }
+            return;
+        }
         if (_helpMode)
         {
             // Any key dismisses the help overlay.
@@ -494,8 +581,11 @@ public sealed partial class TerminalViewer
         switch (resolved.Kind)
         {
             case LinkKind.External:
-                OpenUrl(link.Url);
-                SetStatus("Opened in browser: " + link.Url);
+                // Opening an external URL launches the system browser / handler. Confirm first so a
+                // crafted link in (possibly untrusted) Markdown can't silently open arbitrary sites.
+                _pendingExternalUrl = link.Url;
+                SetStatus($"Open external link? {Truncate(link.Url, 60)}   [y / N]", 30);
+                _dirty = true;
                 break;
             case LinkKind.LocalFile when resolved.AbsolutePath is not null:
                 _ = LoadAsync(resolved.AbsolutePath, pushHistory: true).ContinueWith(_ => { _scroll = 0; });

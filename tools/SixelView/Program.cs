@@ -42,6 +42,7 @@ internal static class Program
                 "--diagram" => await DoDiagramAsync(opt, bg, bgColor),
                 "--images" => await DoImagesAsync(opt, bg, bgColor),
                 "--overlay" => DoOverlay(opt, bgColor),
+                "--doc" => DoDoc(opt, bgColor),
                 _ => Fail($"Unknown mode '{opt.Mode}'."),
             };
         }
@@ -53,6 +54,21 @@ internal static class Program
     }
 
     // ---- modes -----------------------------------------------------------------------------
+
+    private static int DoDoc(Options opt, SKColor bgColor)
+    {
+        if (opt.Input is null) return Fail("--doc needs a path to a .md file.");
+        string md = File.ReadAllText(opt.Input);
+        int cols = opt.Cols > 0 ? opt.Cols : 100;
+        int rows = opt.OverlayRows > 0 ? opt.OverlayRows : 40;
+        string ansi = TerminalViewer.CaptureDocument(opt.Dark, cols, rows, md, opt.TocSelected);
+
+        var defBg = opt.Dark ? new SKColor(0x0d, 0x11, 0x17) : new SKColor(0xff, 0xff, 0xff);
+        var defFg = opt.Dark ? new SKColor(0xe6, 0xed, 0xf3) : new SKColor(0x1f, 0x23, 0x28);
+        using var bmp = AnsiGridRenderer.Render(ansi, cols, rows, defBg, defFg);
+        Console.WriteLine($"doc rendered {cols}x{rows} cells -> {bmp.Width}x{bmp.Height}px");
+        return Save(bmp, opt, $"doc-{(opt.Dark ? "dark" : "light")}", sourceBytes: ansi.Length);
+    }
 
     private static int DoOverlay(Options opt, SKColor bgColor)
     {
@@ -322,7 +338,7 @@ internal static class Program
                 string? Next() => (i + 1 < args.Length) ? args[++i] : null;
                 switch (a)
                 {
-                    case "--raw": case "--png": case "--diagram": case "--images": case "--overlay":
+                    case "--raw": case "--png": case "--diagram": case "--images": case "--overlay": case "--doc":
                         o.Mode = a; if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) o.Input = args[++i]; break;
                     case "--theme": o.Dark = (Next() ?? "dark").Equals("dark", StringComparison.OrdinalIgnoreCase); break;
                     case "--kind": o.Kind = (Next() ?? "mermaid").Equals("d2", StringComparison.OrdinalIgnoreCase) ? DiagramKind.D2 : DiagramKind.Mermaid; break;

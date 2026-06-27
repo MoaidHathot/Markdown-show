@@ -1,8 +1,16 @@
+---
+title: Markdown-show Demo
+author: mdv
+date: 2026-01-01
+---
+
 # Markdown-show Demo
 
 [[_TOC_]]
 
-Welcome to **mdv**, a terminal-first Markdown viewer with an optional browser mode.
+Welcome to **mdv**, a terminal-first Markdown viewer with an optional browser mode.[^intro]
+
+[^intro]: This sentence has a footnote; its definition appears in the Footnotes section at the bottom.
 
 ## Features
 
@@ -436,3 +444,18 @@ core.parser -> core.diagrams
 ## Navigation
 
 See the [second page](./page2.md) for multi-file navigation.
+
+## Glossary (definition list)
+
+Sixel
+:   A terminal graphics protocol used to draw diagrams and images inline.
+
+Front matter
+:   A leading YAML metadata block (delimited by `---`) that is recognized and stripped from the rendered output.
+
+## Footnotes
+
+Footnotes[^demo] are collected here automatically.
+
+[^demo]: They render as superscript markers in the text and a numbered list at the end.
+

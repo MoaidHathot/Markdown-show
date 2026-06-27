@@ -41,6 +41,12 @@ internal sealed class MermaidRenderer : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            // Provisioning failures (Chromium download) get an actionable hint; everything else
+            // surfaces the underlying message.
+            if (_provisionError is not null)
+                return DiagramResult.Fail(request.Key,
+                    _provisionError + " Run mdv with --best-effort to skip the headless browser and " +
+                    "open mermaid diagrams in your browser instead.");
             return DiagramResult.Fail(request.Key, "Mermaid render failed: " + ex.Message);
         }
     }

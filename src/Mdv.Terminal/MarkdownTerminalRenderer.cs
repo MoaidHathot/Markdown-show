@@ -1,4 +1,5 @@
 using System.Text;
+using Markdig.Extensions.Alerts;
 using Markdig.Extensions.Mathematics;
 using Markdig.Extensions.Tables;
 using Markdig.Renderers.Html;
@@ -46,12 +47,16 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
             case HeadingBlock heading: RenderHeading(heading); break;
             case ParagraphBlock para: RenderParagraph(para, indent); break;
             case ListBlock list: RenderList(list, indent); break;
+            case AlertBlock alert: RenderAlert(alert, indent); break;
             case QuoteBlock quote: RenderQuote(quote, indent); break;
             case MathBlock math: RenderMathBlock(math, indent); break;
+            case Markdig.Extensions.Yaml.YamlFrontMatterBlock: break; // stripped: never render front matter
             case FencedCodeBlock fenced: RenderFenced(fenced, indent); break;
             case CodeBlock code: RenderIndentedCode(code, indent); break;
             case Table table: RenderTable(table, indent); break;
             case ThematicBreakBlock: RenderRule(); break;
+            case Markdig.Extensions.Footnotes.FootnoteGroup footnotes: RenderFootnotes(footnotes); break;
+            case Markdig.Extensions.DefinitionLists.DefinitionList defList: RenderDefinitionList(defList, indent); break;
             case ContainerBlock generic:
                 foreach (var child in generic) RenderBlock(child, indent);
                 break;
@@ -284,6 +289,19 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
             case LineBreakInline lb:
                 spans.Add(new StyledSpan(lb.IsHard ? "\n" : " ", color, style, linkId));
                 break;
+            case Markdig.Extensions.TaskLists.TaskList task:
+                // GitHub task list checkbox. ☑ when checked, ☐ when unchecked.
+                spans.Add(new StyledSpan(task.Checked ? "☑ " : "☐ ",
+                    task.Checked ? (theme.IsDark ? Rgb.FromHex("#3fb950") : Rgb.FromHex("#1a7f37")) : theme.Muted,
+                    style, linkId));
+                break;
+            case Markdig.Extensions.Footnotes.FootnoteLink footnote:
+                AppendFootnoteRef(footnote, spans, style, linkId);
+                break;
+            case Markdig.Syntax.Inlines.HtmlInline:
+                // Raw inline HTML tags are dropped (we render Markdown, not markup). Text between
+                // tags is a LiteralInline and still shows; HTML entities are pre-decoded by Markdig.
+                break;
             case ContainerInline c:
                 foreach (var child in c) AppendInline(child, spans, color, style, linkId);
                 break;
@@ -318,6 +336,24 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
         int ordinal = id + 1;            // links are followed by pressing 1..9
         if (ordinal < 1 || ordinal > 9) return;
         spans.Add(new StyledSpan(SuperscriptDigits[ordinal], theme.Accent, CellStyle.Bold, id));
+    }
+
+    /// <summary>Renders a footnote reference ([^1]) as a superscript number.</summary>
+    private void AppendFootnoteRef(Markdig.Extensions.Footnotes.FootnoteLink footnote, List<StyledSpan> spans, CellStyle style, int? linkId)
+    {
+        if (footnote.IsBackLink) return;   // we don't render the back-reference arrows
+        int n = footnote.Footnote?.Order ?? footnote.Index + 1;
+        spans.Add(new StyledSpan(ToSuperscript(n), theme.Accent, style | CellStyle.Bold, linkId));
+    }
+
+    /// <summary>Converts a non-negative integer to its Unicode superscript form.</summary>
+    private static string ToSuperscript(int n)
+    {
+        if (n < 0) return "";
+        var s = n.ToString();
+        var sb = new StringBuilder(s.Length);
+        foreach (var ch in s) sb.Append(SuperscriptDigits[ch - '0']);
+        return sb.ToString();
     }
 
     // ---------------- helpers for line emission live in Emit.cs (partial) ----------------

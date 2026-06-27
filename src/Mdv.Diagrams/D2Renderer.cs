@@ -50,6 +50,16 @@ internal sealed class D2Renderer
             var png = Rasterizer.SvgToPng(svg, out var width, out var height);
             return new DiagramResult(request.Key, DiagramStatus.Ready, png, svg, width, height, null);
         }
+        catch (D2NotFoundException)
+        {
+            return DiagramResult.Fail(request.Key,
+                $"d2 executable not found ('{_d2Path}'). Install D2 (https://d2lang.com) and ensure " +
+                "it is on your PATH, or pass --d2-path <path-to-d2>.");
+        }
+        catch (OperationCanceledException)
+        {
+            return DiagramResult.Fail(request.Key, "D2 render timed out.");
+        }
         catch (Exception ex)
         {
             return DiagramResult.Fail(request.Key, "D2 render failed: " + ex.Message);
@@ -73,24 +83,48 @@ internal sealed class D2Renderer
         psi.ArgumentList.Add("-");   // write to stdout
 
         using var proc = new Process { StartInfo = psi };
-        proc.Start();
-
-        await proc.StandardInput.WriteAsync(source.AsMemory(), ct);
-        proc.StandardInput.Close();
-
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = proc.StandardError.ReadToEndAsync(ct);
-        await proc.WaitForExitAsync(ct);
-
-        var stdout = await stdoutTask;
-        if (proc.ExitCode != 0)
+        try
         {
-            var err = await stderrTask;
-            throw new InvalidOperationException(err.Trim());
+            proc.Start();
         }
-        return stdout;
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // d2 binary not found / not executable.
+            throw new D2NotFoundException();
+        }
+
+        // Bound the render so a wedged d2 process can't hang the viewer indefinitely.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(20));
+        var linked = timeoutCts.Token;
+
+        try
+        {
+            await proc.StandardInput.WriteAsync(source.AsMemory(), linked);
+            proc.StandardInput.Close();
+
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(linked);
+            var stderrTask = proc.StandardError.ReadToEndAsync(linked);
+            await proc.WaitForExitAsync(linked);
+
+            var stdout = await stdoutTask;
+            if (proc.ExitCode != 0)
+            {
+                var err = await stderrTask;
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(err) ? "d2 exited with an error." : err.Trim());
+            }
+            return stdout;
+        }
+        catch (OperationCanceledException)
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
+            throw;
+        }
     }
 }
+
+/// <summary>Signals that the configured d2 executable could not be started (not found on PATH).</summary>
+internal sealed class D2NotFoundException : Exception;
 
 internal static class Rasterizer
 {

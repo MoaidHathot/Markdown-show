@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -10,6 +10,7 @@
     <ToolCommandName>mdv</ToolCommandName>
     <PackageId>mdv</PackageId>
     <Version>0.1.0</Version>
+    <InformationalVersion>0.1.0</InformationalVersion>
     <Authors>Markdown-show</Authors>
     <Description>A terminal-first, feature-rich Markdown viewer with live reload, search, [[_TOC_]], mermaid and D2 diagrams, and an optional browser mode.</Description>
     <PackageTags>markdown;viewer;tui;terminal;mermaid;d2;cli</PackageTags>

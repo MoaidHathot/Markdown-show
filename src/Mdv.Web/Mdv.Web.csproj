@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -11,6 +11,12 @@
 
   <ItemGroup>
     <EmbeddedResource Include="assets\**\*" />
+    <!-- mermaid.min.js is large (~2.5 MB). Share the single copy bundled in Mdv.Diagrams instead of
+         duplicating it here, but embed it under the resource name the web asset loader expects. -->
+    <EmbeddedResource Include="..\Mdv.Diagrams\assets\mermaid.min.js">
+      <LogicalName>Mdv.Web.assets.vendor.mermaid.min.js</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>
