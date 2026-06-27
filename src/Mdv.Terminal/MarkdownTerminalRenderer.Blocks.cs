@@ -40,22 +40,19 @@ public sealed partial class MarkdownTerminalRenderer
             foreach (var token in Tokenize(span.Text))
             {
                 if (token == "\n") { firstLineOfBlock = false; Flush(); continue; }
-                int tokenLen = token.Length;
+                int tokenLen = TextWidth.Of(token);
 
                 // A single token longer than the whole line (e.g. a long URL or path) would otherwise
-                // be clipped at the screen edge. Hard-break it across lines at character boundaries.
+                // be clipped at the screen edge. Hard-break it across lines at grapheme boundaries.
                 if (tokenLen > max && token.Trim().Length > 0)
                 {
                     if (used > 0) { firstLineOfBlock = false; Flush(); }
-                    int pos = 0;
-                    while (pos < token.Length)
+                    foreach (var g in TextWidth.Graphemes(token))
                     {
-                        int take = Math.Min(max - used, token.Length - pos);
-                        if (take <= 0) { firstLineOfBlock = false; Flush(); continue; }
-                        current.Spans.Add(span with { Text = token.Substring(pos, take) });
-                        used += take;
-                        pos += take;
-                        if (used >= max && pos < token.Length) { firstLineOfBlock = false; Flush(); }
+                        int gw = TextWidth.ElementWidth(g);
+                        if (used + gw > max && used > 0) { firstLineOfBlock = false; Flush(); }
+                        current.Spans.Add(span with { Text = g });
+                        used += gw;
                     }
                     continue;
                 }
@@ -112,10 +109,21 @@ public sealed partial class MarkdownTerminalRenderer
     {
         // Ordered lists honor their start number (e.g. "5." continues from 5).
         int number = list.IsOrdered && int.TryParse(list.OrderedStart, out var start) ? start : 1;
+        // Unordered bullets vary by nesting depth: • ◦ ▪ (cycling).
+        string[] bullets = { "• ", "◦ ", "▪ " };
+        string bullet = bullets[_listDepth % bullets.Length];
+        bool loose = list.IsLoose;
+        _listDepth++;
+
+        bool firstItem = true;
         foreach (var item in list)
         {
             if (item is not ListItemBlock listItem) continue;
-            var marker = list.IsOrdered ? $"{number}. " : "• ";
+            // A loose list separates items with a blank line.
+            if (loose && !firstItem) AddBlank();
+            firstItem = false;
+
+            var marker = list.IsOrdered ? $"{number}. " : bullet;
             number++;
             int childIndent = indent + marker.Length;
             bool firstChild = true;
@@ -133,8 +141,11 @@ public sealed partial class MarkdownTerminalRenderer
                 }
             }
         }
+        _listDepth--;
         AddBlank();
     }
+
+    private int _listDepth;
 
     // ---------------- quotes & alerts ----------------
     private void RenderQuote(QuoteBlock quote, int indent)
@@ -342,32 +353,64 @@ public sealed partial class MarkdownTerminalRenderer
         int n = 1;
         foreach (var spans in codeLines)
         {
-            var line = new DisplayLine();
-            if (pad.Length > 0) line.Spans.Add(new StyledSpan(pad));
-            // Line number, right-aligned in a gutter exactly (numWidth + 1) wide so the '│'
-            // lines up with the ┬/┼/┴ junctions in the borders.
-            line.Spans.Add(new StyledSpan(n.ToString().PadLeft(numWidth) + " ", numColor));
-            line.Spans.Add(new StyledSpan("│ ", rule));
+            // Soft-wrap a long code line across multiple visual rows (instead of clipping it at the
+            // right border). The first row shows the line number; continuation rows show a ↳ marker.
+            var wrapped = WrapCodeSpans(spans, interior);
+            if (wrapped.Count == 0) wrapped.Add([]);
 
-            int used = 0;
-            if (spans.Count > 0)
+            for (int w = 0; w < wrapped.Count; w++)
             {
-                foreach (var span in spans)
-                {
-                    if (used >= interior) break;
-                    var text = span.Text;
-                    if (used + text.Length > interior) text = text[..Math.Max(0, interior - used)];
-                    if (text.Length == 0) continue;
-                    line.Spans.Add(span);
-                    used += text.Length;
-                }
+                var line = new DisplayLine();
+                if (pad.Length > 0) line.Spans.Add(new StyledSpan(pad));
+                // Line number on the first row, a continuation arrow on wrapped rows. The gutter is
+                // exactly (numWidth + 1) wide so the '│' lines up with the ┬/┼/┴ junctions.
+                string gutterText = w == 0
+                    ? n.ToString().PadLeft(numWidth) + " "
+                    : "↳".PadLeft(numWidth) + " ";
+                line.Spans.Add(new StyledSpan(gutterText, w == 0 ? numColor : rule));
+                line.Spans.Add(new StyledSpan("│ ", rule));
+                line.Spans.AddRange(wrapped[w]);
+                _lines.Add(line);
             }
-            _lines.Add(line);
             n++;
         }
 
         // Bottom border:  ───────┴────────────────
         EmitGridBorder(pad, numWidth, frameWidth, '┴', rule);
+    }
+
+    /// <summary>Wraps a code line's styled spans to <paramref name="width"/> display columns at
+    /// grapheme boundaries (code has no word breaks), preserving each span's style/color.</summary>
+    private static List<List<StyledSpan>> WrapCodeSpans(List<StyledSpan> spans, int width)
+    {
+        var rows = new List<List<StyledSpan>>();
+        var current = new List<StyledSpan>();
+        int used = 0;
+        foreach (var span in spans)
+        {
+            if (span.Text.Length == 0) continue;
+            var buffer = new System.Text.StringBuilder();
+            void FlushSegment()
+            {
+                if (buffer.Length > 0) { current.Add(span with { Text = buffer.ToString() }); buffer.Clear(); }
+            }
+            foreach (var g in TextWidth.Graphemes(span.Text))
+            {
+                int gw = TextWidth.ElementWidth(g);
+                if (used + gw > width && (current.Count > 0 || buffer.Length > 0))
+                {
+                    FlushSegment();
+                    rows.Add(current);
+                    current = [];
+                    used = 0;
+                }
+                buffer.Append(g);
+                used += gw;
+            }
+            FlushSegment();
+        }
+        if (current.Count > 0) rows.Add(current);
+        return rows;
     }
 
     private void EmitGridBorder(string pad, int numWidth, int frameWidth, char junction, Rgb color)
@@ -452,6 +495,26 @@ public sealed partial class MarkdownTerminalRenderer
         var spans = new List<StyledSpan> { new("— ", Theme.Muted) };
         spans.AddRange(InlineToSpans(caption.Inline, Theme.Muted, CellStyle.Italic));
         EmitWrapped(spans, indent + 2);
+    }
+
+    /// <summary>Renders a page footer (^^ text ^^) in muted/dim text with a subtle marker.</summary>
+    private void RenderFooter(Markdig.Extensions.Footers.FooterBlock footer, int indent)
+    {
+        EnsureBlankBefore();
+        foreach (var child in footer)
+        {
+            if (child is Markdig.Syntax.LeafBlock leaf && leaf.Inline is not null)
+            {
+                var spans = new List<StyledSpan> { new("‖ ", Theme.Rule) };
+                spans.AddRange(InlineToSpans(leaf.Inline, Theme.Muted, CellStyle.Italic | CellStyle.Dim));
+                EmitWrapped(spans, indent);
+            }
+            else
+            {
+                RenderBlock(child, indent);
+            }
+        }
+        AddBlank();
     }
 
     // ---------------- display math ($$...$$) ----------------

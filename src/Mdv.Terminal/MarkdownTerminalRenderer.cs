@@ -60,6 +60,7 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
             case Markdig.Extensions.DefinitionLists.DefinitionList defList: RenderDefinitionList(defList, indent); break;
             case Markdig.Extensions.CustomContainers.CustomContainer container: RenderCustomContainer(container, indent); break;
             case Markdig.Extensions.Figures.FigureCaption caption: RenderFigureCaption(caption, indent); break;
+            case Markdig.Extensions.Footers.FooterBlock footer: RenderFooter(footer, indent); break;
             case ContainerBlock generic:
                 foreach (var child in generic) RenderBlock(child, indent);
                 break;
@@ -287,6 +288,13 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
                         foreach (var child in emphasis) AppendInline(child, spans, color, s, linkId);
                         break;
                     }
+                    case ('"', _): // ""citation"" → a cited reference, shown italic in muted color
+                    {
+                        spans.Add(new StyledSpan("“", theme.Muted, style, linkId));
+                        foreach (var child in emphasis) AppendInline(child, spans, theme.Muted, style | CellStyle.Italic, linkId);
+                        spans.Add(new StyledSpan("”", theme.Muted, style, linkId));
+                        break;
+                    }
                     default:
                     {
                         var s = style | (emphasis.DelimiterCount >= 2 ? CellStyle.Bold : CellStyle.Italic);
@@ -367,8 +375,24 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
     private int RegisterLink(string url)
     {
         var id = _links.Count;
-        _links.Add(new TerminalLink(id, url));
+        _links.Add(new TerminalLink(id, NormalizeHref(url)));
         return id;
+    }
+
+    /// <summary>
+    /// Normalizes a link target so it actually opens when followed: bare <c>www.</c> GFM autolinks
+    /// get an <c>https://</c> scheme, and bare email addresses get a <c>mailto:</c> scheme.
+    /// </summary>
+    private static string NormalizeHref(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return url;
+        var u = url.Trim();
+        if (u.StartsWith("www.", StringComparison.OrdinalIgnoreCase)) return "https://" + u;
+        // Looks like a bare email (has @, no scheme, no spaces/slashes).
+        if (!u.Contains("://") && !u.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
+            && u.Contains('@') && !u.Contains(' ') && !u.Contains('/'))
+            return "mailto:" + u;
+        return u;
     }
 
     private static readonly string[] SuperscriptDigits = { "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹" };

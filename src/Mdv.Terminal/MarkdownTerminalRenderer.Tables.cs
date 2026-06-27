@@ -185,33 +185,28 @@ public sealed partial class MarkdownTerminalRenderer
 
     private static IEnumerable<string> HardChunks(string s, int width)
     {
-        for (int i = 0; i < s.Length; i += width)
-            yield return s.Substring(i, Math.Min(width, s.Length - i));
+        // Break a long token at grapheme boundaries so we never split an emoji/combining sequence,
+        // and so each chunk is at most `width` display columns.
+        var sb = new System.Text.StringBuilder();
+        int w = 0;
+        foreach (var g in TextWidth.Graphemes(s))
+        {
+            int gw = TextWidth.ElementWidth(g);
+            if (w + gw > width && sb.Length > 0)
+            {
+                yield return sb.ToString();
+                sb.Clear();
+                w = 0;
+            }
+            sb.Append(g);
+            w += gw;
+        }
+        if (sb.Length > 0) yield return sb.ToString();
     }
 
     private static int CellWidth(List<StyledSpan> spans) =>
         spans.Sum(s => DisplayWidth(s.Text));
 
-    /// <summary>Approximate terminal display width: East-Asian wide / fullwidth glyphs count as 2.</summary>
-    private static int DisplayWidth(string s)
-    {
-        int w = 0;
-        foreach (var ch in s)
-        {
-            if (char.IsControl(ch)) continue;
-            w += IsWide(ch) ? 2 : 1;
-        }
-        return w;
-    }
-
-    private static bool IsWide(char ch) =>
-        ch >= 0x1100 && (
-            ch <= 0x115F ||                       // Hangul Jamo
-            ch == 0x2329 || ch == 0x232A ||
-            (ch >= 0x2E80 && ch <= 0xA4CF && ch != 0x303F) || // CJK..Yi
-            (ch >= 0xAC00 && ch <= 0xD7A3) ||     // Hangul Syllables
-            (ch >= 0xF900 && ch <= 0xFAFF) ||     // CJK Compatibility Ideographs
-            (ch >= 0xFE30 && ch <= 0xFE4F) ||     // CJK Compatibility Forms
-            (ch >= 0xFF00 && ch <= 0xFF60) ||     // Fullwidth Forms
-            (ch >= 0xFFE0 && ch <= 0xFFE6));
+    /// <summary>Terminal display width (East-Asian wide / emoji = 2, combining marks = 0).</summary>
+    private static int DisplayWidth(string s) => TextWidth.Of(s);
 }

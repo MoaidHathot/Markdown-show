@@ -190,4 +190,36 @@ public class TerminalRenderingTests
         Assert.Contains("Warning", text);
         Assert.Contains("Be careful.", text);
     }
+
+    [Fact]
+    public void Long_code_line_soft_wraps_with_continuation_marker()
+    {
+        var longLine = "x = " + string.Concat(Enumerable.Repeat("aaaaaaaaaa ", 12)).Trim();
+        var md = $"```python\n{longLine}\n```";
+        var lines = Render.Lines(md, width: 40);
+        // The wrapped continuation row carries a ↳ marker in the gutter.
+        Assert.Contains(lines, l => l.Contains("↳"));
+        // No content row exceeds the frame width.
+        Assert.All(lines, l => Assert.True(l.Length <= 40, $"code line exceeds width: '{l}'"));
+    }
+
+    [Fact]
+    public void Nested_unordered_lists_vary_bullet_by_depth()
+    {
+        var md = "- one\n  - two\n    - three";
+        var text = Render.Text(md);
+        Assert.Contains("•", text);   // level 1
+        Assert.Contains("◦", text);   // level 2
+        Assert.Contains("▪", text);   // level 3
+    }
+
+    [Fact]
+    public void Loose_list_inserts_blank_lines_between_items()
+    {
+        var loose = "- a\n\n- b\n\n- c";
+        var tight = "- a\n- b\n- c";
+        int looseBlanks = Render.Lines(loose).Count(l => l.Trim().Length == 0);
+        int tightBlanks = Render.Lines(tight).Count(l => l.Trim().Length == 0);
+        Assert.True(looseBlanks > tightBlanks, "a loose list should have more blank separator lines than a tight one");
+    }
 }
