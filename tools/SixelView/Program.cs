@@ -1,13 +1,13 @@
-using Mdv.Core;
-using Mdv.Diagrams;
-using Mdv.Terminal;
+using Readmd.Core;
+using Readmd.Diagrams;
+using Readmd.Terminal;
 using SkiaSharp;
 
 namespace SixelView;
 
 /// <summary>
-/// DEV-ONLY diagnostic. Turns the Sixel bytes Mdv.Terminal would emit back into a PNG so the agent
-/// can visually verify rendering. NOT shipped, NOT referenced by mdv, NOT run at mdv runtime.
+/// DEV-ONLY diagnostic. Turns the Sixel bytes Readmd.Terminal would emit back into a PNG so the agent
+/// can visually verify rendering. NOT shipped, NOT referenced by readmd, NOT run at readmd runtime.
 ///
 /// Modes:
 ///   --raw &lt;file|-&gt;                       decode a Sixel dump (incl. one captured from a real terminal)
@@ -96,7 +96,7 @@ internal static class Program
         string ansi;
         if (which is "toc" or "contents")
         {
-            var toc = new List<Mdv.Core.TocEntry>
+            var toc = new List<Readmd.Core.TocEntry>
             {
                 new(1, "Introduction", "introduction", 1),
                 new(2, "Getting Started", "getting-started", 5),

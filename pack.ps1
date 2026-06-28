@@ -1,11 +1,11 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Builds, tests, and packs the mdv .NET tool, optionally pushing it to nuget.org.
+    Builds, tests, and packs the readmd .NET tool, optionally pushing it to nuget.org.
 
 .DESCRIPTION
     Restores and builds the solution in Release, runs the test suite, then packs
-    src/Mdv.Cli (the `mdv` global/local .NET tool) into ./artifacts/nupkg.
+    src/Readmd.Cli (the `readmd` global/local .NET tool) into ./artifacts/nupkg.
 
     With -Push, the resulting .nupkg is published to nuget.org. The API key is taken
     from -ApiKey if provided, otherwise from the NUGET_API_KEY environment variable.
@@ -44,9 +44,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root      = $PSScriptRoot
-$solution  = Join-Path $root 'Mdv.slnx'
-$cliProj   = Join-Path $root 'src/Mdv.Cli/Mdv.Cli.csproj'
-$testProj  = Join-Path $root 'tests/Mdv.Tests/Mdv.Tests.csproj'
+$solution  = Join-Path $root 'Readmd.slnx'
+$cliProj   = Join-Path $root 'src/Readmd.Cli/Readmd.Cli.csproj'
+$testProj  = Join-Path $root 'tests/Readmd.Tests/Readmd.Tests.csproj'
 $outDir    = Join-Path $root 'artifacts/nupkg'
 $source    = 'https://api.nuget.org/v3/index.json'
 
@@ -75,7 +75,7 @@ if ($SkipTests) {
 
 # 3) Pack
 if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
-Invoke-Step "Packing the mdv tool" {
+Invoke-Step "Packing the readmd tool" {
     dotnet pack $cliProj --configuration $Configuration --no-build --output $outDir --nologo
 }
 

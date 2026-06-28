@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Readmd.Cli/Readmd.Cli.csproj" />
+    <Project Path="src/Readmd.Core/Readmd.Core.csproj" />
+    <Project Path="src/Readmd.Diagrams/Readmd.Diagrams.csproj" />
+    <Project Path="src/Readmd.Terminal/Readmd.Terminal.csproj" />
+    <Project Path="src/Readmd.Web/Readmd.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Readmd.Tests/Readmd.Tests.csproj" />
+  </Folder>
+</Solution>

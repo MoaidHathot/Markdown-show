@@ -2,10 +2,10 @@
 
   <!--
     SixelView is a DEV-ONLY diagnostic harness used to verify terminal rendering. It decodes the
-    exact Sixel bytes Mdv.Terminal emits back into a PNG so the output can be inspected visually.
+    exact Sixel bytes Readmd.Terminal emits back into a PNG so the output can be inspected visually.
 
-    This project is intentionally NOT part of Mdv.slnx and is NOT shipped in the `mdv` package.
-    It is never referenced by the product and never runs at mdv runtime.
+    This project is intentionally NOT part of Readmd.slnx and is NOT shipped in the `readmd` package.
+    It is never referenced by the product and never runs at readmd runtime.
     See Program.cs for the full list of modes and flags.
   -->
 
@@ -21,8 +21,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Mdv.Terminal\Mdv.Terminal.csproj" />
-    <ProjectReference Include="..\..\src\Mdv.Diagrams\Mdv.Diagrams.csproj" />
+    <ProjectReference Include="..\..\src\Readmd.Terminal\Readmd.Terminal.csproj" />
+    <ProjectReference Include="..\..\src\Readmd.Diagrams\Readmd.Diagrams.csproj" />
   </ItemGroup>
 
 </Project>

@@ -4,7 +4,7 @@ namespace SixelView;
 
 /// <summary>
 /// Decodes a Sixel escape sequence back into an <see cref="SKBitmap"/>. This is the exact inverse of
-/// <c>Mdv.Terminal.SixelEncoder</c>: same DCS envelope, the same <c>#i;2;r;g;b</c> palette registers
+/// <c>Readmd.Terminal.SixelEncoder</c>: same DCS envelope, the same <c>#i;2;r;g;b</c> palette registers
 /// (RGB as 0..100 percentages), the same 6-pixel vertical bands, <c>!n</c> run-length repetition,
 /// <c>$</c> carriage-return (color overlay within a band) and <c>-</c> band advance.
 ///

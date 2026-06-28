@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Readmd.Core\Readmd.Core.csproj" />
+    <ProjectReference Include="..\Readmd.Diagrams\Readmd.Diagrams.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="assets\**\*" />
+    <!-- mermaid.min.js is large (~2.5 MB). Share the single copy bundled in Readmd.Diagrams instead of
+         duplicating it here, but embed it under the resource name the web asset loader expects. -->
+    <EmbeddedResource Include="..\Readmd.Diagrams\assets\mermaid.min.js">
+      <LogicalName>Readmd.Web.assets.vendor.mermaid.min.js</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

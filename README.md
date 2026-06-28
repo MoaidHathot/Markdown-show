@@ -1,10 +1,10 @@
-# mdv — terminal Markdown viewer
+# readmd — terminal Markdown viewer
 
 A **terminal-first, feature-rich Markdown viewer** with an optional browser mode. It renders Markdown right in your terminal — including **mermaid** and **D2** diagrams (as real images via Sixel), syntax-highlighted code, tables, GitHub-style alerts, math, and an Azure DevOps `[[_TOC_]]` table of contents — and live-reloads as you edit. When you want full fidelity, the same document opens in your browser with one keypress.
 
 ```bash
-dnx mdv report.md                 # view in the terminal (TUI)
-dnx mdv report.md --browser       # view in the browser (full fidelity)
+dnx readmd report.md                 # view in the terminal (TUI)
+dnx readmd report.md --browser       # view in the browser (full fidelity)
 ```
 
 > Requires the **.NET 10 SDK** (for `dnx`). `d2` on your `PATH` is needed for D2 diagrams; the headless browser used for mermaid is downloaded automatically on first use.
@@ -12,7 +12,7 @@ dnx mdv report.md --browser       # view in the browser (full fidelity)
 ## Features
 
 - **Runs in the terminal** as a full TUI (alternate screen, scrolling, overlays).
-- **One-shot launch** via `dnx mdv <file>` (or `npx`-style global install).
+- **One-shot launch** via `dnx readmd <file>` (or `npx`-style global install).
 - **GitHub-Flavored Markdown**: headings, **bold/italic/strikethrough**, inline code, links, tables, lists, blockquotes, hard breaks, emoji shortcodes.
 - **GitHub alerts** (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) with colored icons and titles.
 - **Task lists** (`- [x]` / `- [ ]`) rendered as ☑ / ☐, **footnotes** with linked markers, and **definition lists**.
@@ -29,7 +29,7 @@ dnx mdv report.md --browser       # view in the browser (full fidelity)
 ## Usage
 
 ```
-mdv <file> [options]
+readmd <file> [options]
 
 Options:
   -b, --browser        Open in the browser instead of the terminal.
@@ -88,15 +88,15 @@ The browser view uses the same vim-style motions, plus toggles to hide chrome:
 
 ## How it works
 
-`mdv` is a single .NET 10 tool composed of five projects:
+`readmd` is a single .NET 10 tool composed of five projects:
 
 | Project | Responsibility |
 | --- | --- |
-| **Mdv.Core** | Markdig pipeline, `[[_TOC_]]` extension, TOC/diagram extraction, file watching, link resolution, diagram cache contracts. |
-| **Mdv.Diagrams** | Renders mermaid (headless Chromium via Playwright, with mermaid bundled) and D2 (`d2` → SVG → PNG via SkiaSharp), cached by content hash. |
-| **Mdv.Web** | Kestrel server: HTML rendering, server-rendered D2 SVG, SSE live-reload with `idiomorph`, multi-file SPA navigation, embedded assets. |
-| **Mdv.Terminal** | Hand-rolled TUI: ANSI/truecolor renderer, Markdown→styled-line layout, TextMate highlighting, Sixel image output, search/TOC/links/history. |
-| **Mdv.Cli** | `System.CommandLine` entry point; packaged as the `mdv` .NET tool. |
+| **Readmd.Core** | Markdig pipeline, `[[_TOC_]]` extension, TOC/diagram extraction, file watching, link resolution, diagram cache contracts. |
+| **Readmd.Diagrams** | Renders mermaid (headless Chromium via Playwright, with mermaid bundled) and D2 (`d2` → SVG → PNG via SkiaSharp), cached by content hash. |
+| **Readmd.Web** | Kestrel server: HTML rendering, server-rendered D2 SVG, SSE live-reload with `idiomorph`, multi-file SPA navigation, embedded assets. |
+| **Readmd.Terminal** | Hand-rolled TUI: ANSI/truecolor renderer, Markdown→styled-line layout, TextMate highlighting, Sixel image output, search/TOC/links/history. |
+| **Readmd.Cli** | `System.CommandLine` entry point; packaged as the `readmd` .NET tool. |
 
 The Markdig pipeline and diagram cache are shared by both front-ends, so the terminal and browser views stay consistent and diagrams are only rendered once per content hash.
 
@@ -106,23 +106,23 @@ Inline diagrams in the terminal use the **Sixel** graphics protocol. Supported t
 
 ## Platform support
 
-`mdv` targets .NET 10 and is cross-platform (Windows, macOS, Linux). A few terminal niceties are currently Windows-only: **mouse-wheel scrolling, click-to-follow-link, and the `m` select-mode** rely on the Windows console API. On macOS/Linux the viewer is fully keyboard-driven (all keybindings still work). The browser front-end is identical on every platform.
+`readmd` targets .NET 10 and is cross-platform (Windows, macOS, Linux). A few terminal niceties are currently Windows-only: **mouse-wheel scrolling, click-to-follow-link, and the `m` select-mode** rely on the Windows console API. On macOS/Linux the viewer is fully keyboard-driven (all keybindings still work). The browser front-end is identical on every platform.
 
 > The first mermaid diagram triggers a one-time headless-browser (Chromium) download via Playwright, which can be large and may take a moment. Use `--best-effort` to skip it (mermaid then opens in your browser on demand). D2 requires the `d2` binary on your `PATH` (or `--d2-path`); if it's missing, the diagram area shows an actionable message.
 
 ## Building from source
 
 ```bash
-git clone https://github.com/MoaidHathot/mdv
-cd mdv
-dotnet build Mdv.slnx
-dotnet test tests/Mdv.Tests/Mdv.Tests.csproj                   # run the test suite
-dotnet run --project src/Mdv.Cli -- samples/demo.md            # terminal
-dotnet run --project src/Mdv.Cli -- samples/demo.md --browser  # browser
+git clone https://github.com/MoaidHathot/readmd
+cd readmd
+dotnet build Readmd.slnx
+dotnet test tests/Readmd.Tests/Readmd.Tests.csproj                   # run the test suite
+dotnet run --project src/Readmd.Cli -- samples/demo.md            # terminal
+dotnet run --project src/Readmd.Cli -- samples/demo.md --browser  # browser
 
 # Pack & install the tool locally
-dotnet pack src/Mdv.Cli -c Release -o artifacts/nupkg
-dotnet tool install --global --add-source artifacts/nupkg mdv
+dotnet pack src/Readmd.Cli -c Release -o artifacts/nupkg
+dotnet tool install --global --add-source artifacts/nupkg readmd
 ```
 
 `samples/demo.md` exercises every feature (TOC, tables, task lists, alerts, code, mermaid, D2, math, multi-file links). CI (GitHub Actions) builds and tests on Windows, macOS, and Linux, and packs the tool.

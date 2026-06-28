@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="__THEME__">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>__TITLE__</title>
+  <link rel="stylesheet" href="/_mdv/vendor/katex.min.css" />
+  <link rel="stylesheet" id="hljs-theme" href="/_mdv/vendor/github-dark.min.css" />
+  <link rel="stylesheet" href="/_mdv/app.css" />
+</head>
+<body>
+  <a href="#readmd-content" id="readmd-skip-link">Skip to content</a>
+  <div id="readmd-layout">
+    <aside id="readmd-sidebar">
+      <div id="readmd-sidebar-head">
+        <span id="readmd-doc-title">__TITLE__</span>
+      </div>
+      <nav id="readmd-toc" aria-label="Table of contents"></nav>
+    </aside>
+    <main id="readmd-main">
+      <div id="readmd-toolbar" role="toolbar" aria-label="Document controls">
+        <button id="readmd-toggle-sidebar" type="button" title="Toggle sidebar (t)" aria-label="Toggle sidebar">☰</button>
+        <input id="readmd-search" type="search" placeholder="Search (/ or Ctrl+F)…" aria-label="Search document" autocomplete="off" />
+        <span id="readmd-search-count" aria-live="polite"></span>
+        <button id="readmd-search-prev" type="button" title="Previous (Shift+Enter)" aria-label="Previous match">▲</button>
+        <button id="readmd-search-next" type="button" title="Next (Enter)" aria-label="Next match">▼</button>
+        <span class="readmd-spacer"></span>
+        <button id="readmd-toggle-zen" type="button" title="Zen mode (z)" aria-label="Toggle zen mode">⛶</button>
+        <button id="readmd-theme-toggle" type="button" title="Toggle theme ([)" aria-label="Toggle light/dark theme">◐</button>
+        <button id="readmd-back" type="button" title="Back (Alt+←)" aria-label="Go back">←</button>
+        <button id="readmd-forward" type="button" title="Forward (Alt+→)" aria-label="Go forward">→</button>
+      </div>
+      <article id="readmd-content" tabindex="-1">__BODY__</article>
+    </main>
+  </div>
+  <div id="readmd-status" class="readmd-hidden" role="status" aria-live="polite"><span id="readmd-status-text"></span></div>
+
+  <div id="readmd-help-overlay" class="readmd-hidden" role="dialog" aria-modal="true" aria-label="Keybindings">
+    <div id="readmd-help-panel">
+      <div id="readmd-help-head">Keybindings <button id="readmd-help-close" type="button" title="Close (Esc)" aria-label="Close keybindings">×</button></div>
+      <div id="readmd-help-body"></div>
+      <div id="readmd-help-foot">press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>
+    </div>
+  </div>
+
+  <script src="/_mdv/vendor/katex.min.js"></script>
+  <script src="/_mdv/vendor/auto-render.min.js"></script>
+  <script src="/_mdv/vendor/highlight.min.js"></script>
+  <script src="/_mdv/vendor/powershell.min.js"></script>
+  <script src="/_mdv/vendor/idiomorph.min.js"></script>
+  <script src="/_mdv/vendor/mermaid.min.js"></script>
+  <script type="module" src="/_mdv/app.js"></script>
+</body>
+</html>

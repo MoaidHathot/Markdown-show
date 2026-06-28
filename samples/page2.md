@@ -9,7 +9,7 @@ This is a separate file reached via a wiki-style link.
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant M as mdv
+  participant M as readmd
   U->>M: open page2.md
   M-->>U: rendered with diagrams
 ```
