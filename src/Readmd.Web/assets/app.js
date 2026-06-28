@@ -420,6 +420,72 @@ document.addEventListener("click", (e) => {
 });
 exportMenu?.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); toggleExportMenu(false); exportBtn.focus(); } });
 
+// ---------------- diagram lightbox (zoom / pan) ----------------
+const lightbox = document.getElementById("readmd-lightbox");
+const lbCanvas = document.getElementById("readmd-lightbox-canvas");
+const lbStage = document.getElementById("readmd-lightbox-stage");
+let lbState = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, svg: "" };
+let lbLastFocus = null;
+
+function lbApply() {
+  lbCanvas.style.transform = `translate(${lbState.x}px, ${lbState.y}px) scale(${lbState.scale})`;
+}
+function lbZoom(factor, cx, cy) {
+  const prev = lbState.scale;
+  const next = Math.min(8, Math.max(0.2, prev * factor));
+  if (cx != null) {
+    // Keep the point under the cursor stationary while zooming.
+    const rect = lbStage.getBoundingClientRect();
+    const ox = cx - rect.left - rect.width / 2;
+    const oy = cy - rect.top - rect.height / 2;
+    lbState.x = ox - (ox - lbState.x) * (next / prev);
+    lbState.y = oy - (oy - lbState.y) * (next / prev);
+  }
+  lbState.scale = next;
+  lbApply();
+}
+function openLightbox(svgEl) {
+  lbState = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, svg: svgEl.outerHTML };
+  lbCanvas.innerHTML = svgEl.outerHTML;
+  const inner = lbCanvas.querySelector("svg");
+  if (inner) { inner.removeAttribute("width"); inner.removeAttribute("height"); inner.style.maxWidth = "none"; }
+  lbApply();
+  lbLastFocus = document.activeElement;
+  lightbox.classList.remove("readmd-hidden");
+  lightbox.querySelector('[data-act="close"]')?.focus();
+}
+function closeLightbox() {
+  lightbox.classList.add("readmd-hidden");
+  lbCanvas.innerHTML = "";
+  if (lbLastFocus && lbLastFocus.focus) lbLastFocus.focus();
+  lbLastFocus = null;
+}
+// Open when a rendered diagram is clicked.
+content.addEventListener("click", (e) => {
+  const fig = e.target.closest("figure.readmd-diagram, .readmd-d2-slot");
+  if (!fig) return;
+  const svg = fig.querySelector("svg");
+  if (svg) { e.preventDefault(); openLightbox(svg); }
+});
+lbStage?.addEventListener("wheel", (e) => { e.preventDefault(); lbZoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });
+lbStage?.addEventListener("dblclick", (e) => lbZoom(1.5, e.clientX, e.clientY));
+lbStage?.addEventListener("pointerdown", (e) => { lbState.dragging = true; lbState.sx = e.clientX - lbState.x; lbState.sy = e.clientY - lbState.y; lbStage.setPointerCapture(e.pointerId); lbStage.style.cursor = "grabbing"; });
+lbStage?.addEventListener("pointermove", (e) => { if (!lbState.dragging) return; lbState.x = e.clientX - lbState.sx; lbState.y = e.clientY - lbState.sy; lbApply(); });
+lbStage?.addEventListener("pointerup", (e) => { lbState.dragging = false; lbStage.style.cursor = "grab"; try { lbStage.releasePointerCapture(e.pointerId); } catch {} });
+document.getElementById("readmd-lightbox-toolbar")?.addEventListener("click", async (e) => {
+  const act = e.target.closest("button")?.getAttribute("data-act");
+  if (act === "in") lbZoom(1.25);
+  else if (act === "out") lbZoom(1 / 1.25);
+  else if (act === "reset") { lbState.scale = 1; lbState.x = 0; lbState.y = 0; lbApply(); }
+  else if (act === "close") closeLightbox();
+  else if (act === "copy") { try { await navigator.clipboard.writeText(lbState.svg); flashStatus("SVG copied"); } catch { flashStatus("Copy failed", true); } }
+  else if (act === "open") {
+    const blob = new Blob([lbState.svg], { type: "image/svg+xml" });
+    window.open(URL.createObjectURL(blob), "_blank", "noopener");
+  }
+});
+lightbox?.addEventListener("click", (e) => { if (e.target === lightbox) closeLightbox(); });
+
 // ---------------- view toggles (sidebar / toolbar / zen) ----------------
 const layout = document.getElementById("readmd-layout");
 const toolbar = document.getElementById("readmd-toolbar");
@@ -528,6 +594,15 @@ function pageHeight() { return window.innerHeight - 40; }
 
 document.addEventListener("keydown", (e) => {
   const typing = document.activeElement === searchInput;
+
+  // Lightbox: Esc closes; +/-/0 zoom while it's open.
+  if (!lightbox.classList.contains("readmd-hidden")) {
+    if (e.key === "Escape") { e.preventDefault(); closeLightbox(); return; }
+    if (e.key === "+" || e.key === "=") { e.preventDefault(); lbZoom(1.25); return; }
+    if (e.key === "-" || e.key === "_") { e.preventDefault(); lbZoom(1 / 1.25); return; }
+    if (e.key === "0") { e.preventDefault(); lbState.scale = 1; lbState.x = 0; lbState.y = 0; lbApply(); return; }
+    return; // swallow other keys while the lightbox is open
+  }
 
   // Close help on Esc (works even while typing).
   if (e.key === "Escape" && !helpOverlay.classList.contains("readmd-hidden")) { e.preventDefault(); toggleHelp(false); return; }

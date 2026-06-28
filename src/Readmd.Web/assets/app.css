@@ -207,6 +207,7 @@ html, body {
 /* Diagrams */
 .readmd-diagram { margin: 20px 0; text-align: center; }
 .readmd-diagram svg { max-width: 100%; height: auto; }
+.readmd-diagram svg, .readmd-d2-slot svg { cursor: zoom-in; }
 .readmd-diagram-placeholder {
   border: 1px dashed var(--border);
   border-radius: 8px;
@@ -374,3 +375,36 @@ body.readmd-zen #readmd-content { max-width: 820px; }
   color: var(--fg-muted);
   background: var(--bg-elev);
 }
+
+/* Diagram lightbox (fullscreen zoom/pan). */
+#readmd-lightbox {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column;
+  background: rgba(0, 0, 0, .82);
+  backdrop-filter: blur(2px);
+}
+#readmd-lightbox.readmd-hidden { display: none; }
+#readmd-lightbox-toolbar {
+  display: flex; gap: 6px; justify-content: center;
+  padding: 10px; flex: 0 0 auto;
+}
+#readmd-lightbox-toolbar button {
+  background: var(--bg-elev); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 6px;
+  min-width: 34px; padding: 5px 10px; cursor: pointer; font-size: 14px;
+}
+#readmd-lightbox-toolbar button:hover { border-color: var(--accent); }
+#readmd-lightbox-stage {
+  flex: 1 1 auto; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; touch-action: none;
+}
+#readmd-lightbox-canvas {
+  transform-origin: center center;
+  will-change: transform;
+}
+#readmd-lightbox-canvas svg {
+  max-width: 90vw; max-height: 80vh;
+  background: #fff; border-radius: 8px;
+}
+

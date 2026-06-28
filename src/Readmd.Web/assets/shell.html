@@ -59,6 +59,18 @@
     </div>
   </div>
 
+  <div id="readmd-lightbox" class="readmd-hidden" role="dialog" aria-modal="true" aria-label="Diagram viewer">
+    <div id="readmd-lightbox-toolbar">
+      <button type="button" data-act="out" title="Zoom out (-)" aria-label="Zoom out">−</button>
+      <button type="button" data-act="reset" title="Reset (0)" aria-label="Reset zoom">⟳</button>
+      <button type="button" data-act="in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button type="button" data-act="copy" title="Copy SVG" aria-label="Copy SVG">Copy</button>
+      <button type="button" data-act="open" title="Open in new tab" aria-label="Open SVG in new tab">Open</button>
+      <button type="button" data-act="close" title="Close (Esc)" aria-label="Close">×</button>
+    </div>
+    <div id="readmd-lightbox-stage"><div id="readmd-lightbox-canvas"></div></div>
+  </div>
+
   <script src="/_readmd/vendor/katex.min.js"></script>
   <script src="/_readmd/vendor/auto-render.min.js"></script>
   <script src="/_readmd/vendor/highlight.min.js"></script>
