@@ -15,10 +15,12 @@ public static class DocumentTextRenderer
     public static string Render(string markdown, bool dark, int width, bool color)
     {
         var theme = TerminalTheme.For(dark);
-        var doc = new MarkdownRenderer().Parse("stdin.md", markdown);
-        var ast = Markdown.Parse(markdown, Pipeline);
+        // Parse once with the terminal pipeline, then derive TOC/front-matter from that same AST —
+        // no second parse and no HTML render (which the text output never displays).
+        var ast = Markdown.Parse(markdown, TerminalPipeline.Instance);
+        var meta = MarkdownRenderer.ExtractMetadata(ast, "stdin.md");
         var renderer = new MarkdownTerminalRenderer(theme, Math.Max(20, width) - 1);
-        var result = renderer.Render(ast, doc.Toc, doc.FrontMatter);
+        var result = renderer.Render(ast, meta.Toc, meta.FrontMatter);
 
         var sb = new StringBuilder();
         foreach (var line in result.Lines)
@@ -50,13 +52,4 @@ public static class DocumentTextRenderer
         }
         sb.Append('\n');
     }
-
-    private static readonly MarkdownPipeline Pipeline =
-        new MarkdownPipelineBuilder()
-            .UseYamlFrontMatter()
-            .UseAdvancedExtensions()
-            .UseEmojiAndSmiley()
-            .UseMathematics()
-            .UseGenericAttributes()
-            .Build();
 }

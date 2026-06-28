@@ -501,13 +501,10 @@ public sealed partial class TerminalViewer
     public static string CaptureDocument(bool dark, int width, int height, string markdown, int scroll = 0)
     {
         var v = new TerminalViewer(dark, width, height, []);
-        var doc = new MarkdownRenderer().Parse("capture.md", markdown);
-        var pipeline = new MarkdownPipelineBuilder()
-            .UseYamlFrontMatter().UseAdvancedExtensions().UseEmojiAndSmiley()
-            .UseMathematics().UseGenericAttributes().Build();
-        var ast = Markdown.Parse(markdown, pipeline);
+        var ast = Markdown.Parse(markdown, TerminalPipeline.Instance);
+        var meta = MarkdownRenderer.ExtractMetadata(ast, "capture.md");
         var renderer = new MarkdownTerminalRenderer(v._theme, width - 1);
-        var result = renderer.Render(ast, doc.Toc, doc.FrontMatter);
+        var result = renderer.Render(ast, meta.Toc, meta.FrontMatter);
         v._lines = result.Lines;
         v._scroll = Math.Clamp(scroll, 0, Math.Max(0, v._lines.Count - 1));
         v._screen.BeginFrame();
@@ -522,10 +519,7 @@ public sealed partial class TerminalViewer
         int aLine, int aCol, int bLine, int bCol)
     {
         var v = new TerminalViewer(dark, width, height, []);
-        var pipeline = new MarkdownPipelineBuilder()
-            .UseYamlFrontMatter().UseAdvancedExtensions().UseEmojiAndSmiley()
-            .UseMathematics().UseGenericAttributes().Build();
-        var doc = Markdown.Parse(markdown, pipeline);
+        var doc = Markdown.Parse(markdown, TerminalPipeline.Instance);
         var renderer = new MarkdownTerminalRenderer(v._theme, width - 1);
         var result = renderer.Render(doc, null);
         v._lines = result.Lines;

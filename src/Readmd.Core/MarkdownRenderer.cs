@@ -15,20 +15,21 @@ namespace Readmd.Core;
 /// </summary>
 public sealed class MarkdownRenderer
 {
-    private readonly MarkdownPipeline _pipeline;
+    // The browser pipeline is process-wide (building UseAdvancedExtensions et al. is not free);
+    // share a single instance instead of rebuilding it per MarkdownRenderer.
+    private static readonly MarkdownPipeline BrowserPipeline = new MarkdownPipelineBuilder()
+        .UseYamlFrontMatter()          // strip leading ---\n...\n--- so it doesn't leak as content
+        .UseAdvancedExtensions()       // tables, footnotes, task lists, alerts, etc.
+        .UseAutoIdentifiers(AutoIdentifierOptions.GitHub) // stable heading ids for TOC + anchors
+        .UseEmojiAndSmiley()
+        .UseMathematics()              // $...$ / $$...$$ -> KaTeX in browser
+        .UseGenericAttributes()
+        .UseTocMarker()                // [[_TOC_]]
+        .Build();
 
-    public MarkdownRenderer()
-    {
-        _pipeline = new MarkdownPipelineBuilder()
-            .UseYamlFrontMatter()          // strip leading ---\n...\n--- so it doesn't leak as content
-            .UseAdvancedExtensions()       // tables, footnotes, task lists, alerts, etc.
-            .UseAutoIdentifiers(AutoIdentifierOptions.GitHub) // stable heading ids for TOC + anchors
-            .UseEmojiAndSmiley()
-            .UseMathematics()              // $...$ / $$...$$ -> KaTeX in browser
-            .UseGenericAttributes()
-            .UseTocMarker()                // [[_TOC_]]
-            .Build();
-    }
+    private readonly MarkdownPipeline _pipeline = BrowserPipeline;
+
+    public MarkdownRenderer() { }
 
     public MarkdownDocument Parse(string sourcePath, string markdown)
     {
@@ -45,6 +46,20 @@ public sealed class MarkdownRenderer
         {
             FrontMatter = frontMatter,
         };
+    }
+
+    /// <summary>
+    /// Extracts the document metadata (front matter, table of contents, diagram list, title) from an
+    /// already-parsed Markdig AST, <em>without</em> rendering HTML. Terminal/print callers use this so
+    /// they parse the document once and never pay for the HTML render they don't display.
+    /// </summary>
+    public static DocumentMetadata ExtractMetadata(Markdig.Syntax.MarkdownDocument document, string sourcePath)
+    {
+        var frontMatter = ExtractFrontMatter(document);
+        var toc = TocExtractor.Extract(document);
+        var diagrams = DiagramExtractor.Extract(document);
+        var title = DeriveTitle(frontMatter, toc, sourcePath);
+        return new DocumentMetadata(title, toc, diagrams, frontMatter);
     }
 
     private static FrontMatter ExtractFrontMatter(Markdig.Syntax.MarkdownDocument document)

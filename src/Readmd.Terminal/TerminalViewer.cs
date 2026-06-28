@@ -38,7 +38,6 @@ public sealed partial class TerminalViewer : IAsyncDisposable
 {
     private readonly TerminalViewerOptions _options;
     private readonly IDiagramRenderer _diagrams;
-    private readonly MarkdownRenderer _markdown = new();
     private readonly LinkResolver _resolver;
     private TerminalTheme _theme;
     private KeyMap _keyMap = KeyMap.Default;
@@ -191,21 +190,14 @@ public sealed partial class TerminalViewer : IAsyncDisposable
 
     private ParsedDoc ParseToLines(string path, string markdown)
     {
-        var doc = _markdown.Parse(path, markdown);
-        var mdAst = Markdig.Markdown.Parse(markdown, BuildPipeline());
+        // Parse once with the shared terminal pipeline and derive TOC/title/front-matter from that
+        // same AST — no second parse, and no HTML render that the terminal never displays.
+        var ast = Markdig.Markdown.Parse(markdown, TerminalPipeline.Instance);
+        var meta = MarkdownRenderer.ExtractMetadata(ast, path);
         var renderer = new MarkdownTerminalRenderer(_theme, _screen.Width - 1);
-        var result = renderer.Render(mdAst, doc.Toc, doc.FrontMatter);
-        return new ParsedDoc(result.Lines, result.Links, doc.Toc, doc.Title, renderer.PendingDiagrams, renderer.PendingImages, renderer.PendingImageGroups);
+        var result = renderer.Render(ast, meta.Toc, meta.FrontMatter);
+        return new ParsedDoc(result.Lines, result.Links, meta.Toc, meta.Title, renderer.PendingDiagrams, renderer.PendingImages, renderer.PendingImageGroups);
     }
-
-    private static Markdig.MarkdownPipeline BuildPipeline() =>
-        new Markdig.MarkdownPipelineBuilder()
-            .UseYamlFrontMatter()          // strip leading YAML front matter (don't render it as content)
-            .UseAdvancedExtensions()
-            .UseEmojiAndSmiley()
-            .UseMathematics()
-            .UseGenericAttributes()
-            .Build();
 
     public async ValueTask DisposeAsync()
     {

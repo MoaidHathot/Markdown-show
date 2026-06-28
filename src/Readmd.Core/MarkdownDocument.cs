@@ -29,6 +29,17 @@ public sealed record DiagramRequest(DiagramKind Kind, string Source, string Key)
 public sealed record TocEntry(int Level, string Title, string Id, int Line);
 
 /// <summary>
+/// Document metadata extracted from a parsed AST without rendering HTML: title, table of contents,
+/// referenced diagrams, and front matter. Used by the terminal/print path, which renders directly
+/// from the AST and never needs the HTML body.
+/// </summary>
+public sealed record DocumentMetadata(
+    string Title,
+    IReadOnlyList<TocEntry> Toc,
+    IReadOnlyList<DiagramRequest> Diagrams,
+    FrontMatter FrontMatter);
+
+/// <summary>
 /// The result of parsing a markdown file: rendered HTML body (for browser mode),
 /// the table of contents, the set of diagrams referenced, and the source line count.
 /// </summary>
