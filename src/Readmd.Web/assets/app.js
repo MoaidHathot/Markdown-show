@@ -663,8 +663,9 @@ const HELP_SECTIONS = [
     ["gg / G", "top / bottom"],
   ]},
   { title: "Find & navigate", items: [
-    ["/ or Ctrl+F", "search"],
+    ["/ or Ctrl+F", "search (this page + other files)"],
     ["n / N", "next / prev match"],
+    ["Ctrl+P", "quick-open a file"],
     ["Alt+← / Alt+→", "back / forward"],
   ]},
   { title: "View", items: [
@@ -672,6 +673,7 @@ const HELP_SECTIONS = [
     ["s", "toggle toolbar"],
     ["z", "zen mode"],
     ["[", "toggle theme"],
+    ["e", "export (HTML / PDF)"],
     ["r", "reload (refresh)"],
     ["?", "this help"],
   ]},

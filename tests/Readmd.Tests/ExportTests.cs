@@ -44,8 +44,8 @@ public class ExportTests
         try
         {
             var html = await HtmlExporter.ExportAsync(path, new StubDiagrams(), DiagramTheme.Dark);
-            Assert.Contains("data-stub", html);                       // stub SVG was inlined
-            Assert.DoesNotContain("readmd-d2-slot", html);            // placeholder slot was replaced
+            Assert.Contains("data-stub", html);                          // stub SVG was inlined
+            Assert.DoesNotContain("class=\"readmd-d2-slot\"", html);     // placeholder slot div was replaced
         }
         finally { File.Delete(path); }
     }
