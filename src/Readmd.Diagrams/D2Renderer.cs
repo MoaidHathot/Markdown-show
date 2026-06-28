@@ -22,12 +22,8 @@ internal sealed class D2Renderer
     {
         try
         {
-            var psi = new ProcessStartInfo(_d2Path, "--version")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            };
+            var psi = ExecutableResolver.Resolve(_d2Path, ["--version"]);
+            if (psi is null) return false;
             using var proc = Process.Start(psi);
             if (proc is null) return false;
             proc.WaitForExit(5000);
@@ -70,17 +66,8 @@ internal sealed class D2Renderer
     {
         // d2 theme ids: 0 = neutral default (light), 200 = dark mauve.
         var themeId = theme == DiagramTheme.Dark ? "200" : "0";
-        var psi = new ProcessStartInfo(_d2Path)
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add($"--theme={themeId}");
-        psi.ArgumentList.Add("-");   // read from stdin
-        psi.ArgumentList.Add("-");   // write to stdout
+        var psi = ExecutableResolver.Resolve(_d2Path, [$"--theme={themeId}", "-", "-"])
+            ?? throw new D2NotFoundException();
 
         using var proc = new Process { StartInfo = psi };
         try

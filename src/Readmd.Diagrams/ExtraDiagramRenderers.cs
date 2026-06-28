@@ -40,30 +40,18 @@ internal sealed class GraphvizRenderer
 
     private async Task<string> RunAsync(string source, DiagramTheme theme, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(_dotPath)
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("-Tsvg");
         // On dark themes, give nodes/edges/text light defaults (only applied when the graph doesn't
         // set its own colors) and keep the page background transparent.
+        var args = new List<string> { "-Tsvg", "-Gbgcolor=transparent" };
         if (theme == DiagramTheme.Dark)
         {
-            psi.ArgumentList.Add("-Gbgcolor=transparent");
-            psi.ArgumentList.Add("-Ncolor=#7c8cf8");
-            psi.ArgumentList.Add("-Nfontcolor=#e6edf3");
-            psi.ArgumentList.Add("-Ecolor=#8b9bf4");
-            psi.ArgumentList.Add("-Efontcolor=#e6edf3");
-        }
-        else
-        {
-            psi.ArgumentList.Add("-Gbgcolor=transparent");
+            args.Add("-Ncolor=#7c8cf8");
+            args.Add("-Nfontcolor=#e6edf3");
+            args.Add("-Ecolor=#8b9bf4");
+            args.Add("-Efontcolor=#e6edf3");
         }
 
+        var psi = ExecutableResolver.Resolve(_dotPath, args) ?? throw new ToolNotFoundException();
         return await ProcessPipe.RunAsync(psi, source, TimeSpan.FromSeconds(20), ct);
     }
 }
@@ -118,16 +106,8 @@ internal sealed class PlantUmlRenderer
 
     private async Task<string> RunAsync(string source, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(_plantUmlPath)
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("-tsvg");
-        psi.ArgumentList.Add("-pipe");
+        var psi = ExecutableResolver.Resolve(_plantUmlPath, ["-tsvg", "-pipe"])
+            ?? throw new ToolNotFoundException();
         return await ProcessPipe.RunAsync(psi, source, TimeSpan.FromSeconds(30), ct);
     }
 }

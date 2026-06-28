@@ -46,3 +46,33 @@ public class DiagramRendererTests
         Assert.Equal(a.Key, b.Key); // trailing whitespace normalized
     }
 }
+
+public class ExecutableResolverTests
+{
+    [Fact]
+    public void Nonexistent_command_resolves_to_null()
+    {
+        Assert.Null(ExecutableResolver.Resolve("readmd-definitely-not-a-real-tool-xyz", ["--version"]));
+        Assert.Null(ExecutableResolver.Find("readmd-definitely-not-a-real-tool-xyz"));
+    }
+
+    [Fact]
+    public void Resolves_a_well_known_tool_on_path()
+    {
+        // 'dotnet' is guaranteed present in the test/build environment. On Windows it may be an
+        // .exe (or a shim); on Unix it's a plain executable — either way Find must locate it.
+        var found = ExecutableResolver.Find("dotnet");
+        Assert.NotNull(found);
+        Assert.True(File.Exists(found!) || Path.IsPathRooted(found));
+    }
+
+    [Fact]
+    public void Resolve_builds_a_runnable_start_info_with_arguments()
+    {
+        var psi = ExecutableResolver.Resolve("dotnet", ["--version"]);
+        Assert.NotNull(psi);
+        Assert.False(psi!.UseShellExecute);
+        // The final argument list ends with our requested args (a launcher prefix may precede them).
+        Assert.Contains("--version", psi.ArgumentList);
+    }
+}

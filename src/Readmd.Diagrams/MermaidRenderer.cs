@@ -45,8 +45,9 @@ internal sealed class MermaidRenderer : IAsyncDisposable
             // surfaces the underlying message.
             if (_provisionError is not null)
                 return DiagramResult.Fail(request.Key,
-                    _provisionError + " Run readmd with --best-effort to skip the headless browser and " +
-                    "open mermaid diagrams in your browser instead.");
+                    _provisionError + " Install mermaid-cli (npm i -g @mermaid-js/mermaid-cli) to render " +
+                    "mermaid without a headless browser, run readmd with --best-effort to open mermaid " +
+                    "diagrams in your browser instead, or use --browser.");
             return DiagramResult.Fail(request.Key, "Mermaid render failed: " + ex.Message);
         }
     }

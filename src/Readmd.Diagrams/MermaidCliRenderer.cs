@@ -19,16 +19,11 @@ internal sealed class MermaidCliRenderer
     {
         try
         {
-            var psi = new ProcessStartInfo(_mmdcPath, "--version")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
+            var psi = ExecutableResolver.Resolve(_mmdcPath, ["--version"]);
+            if (psi is null) return false;
             using var proc = Process.Start(psi);
             if (proc is null) return false;
-            proc.WaitForExit(5000);
+            proc.WaitForExit(8000);
             return proc.ExitCode == 0;
         }
         catch { return false; }
@@ -74,27 +69,20 @@ internal sealed class MermaidCliRenderer
 
     private async Task RunMmdcAsync(string input, string output, string configFile, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(_mmdcPath)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(input);
-        psi.ArgumentList.Add("-o"); psi.ArgumentList.Add(output);
-        psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(configFile);
-        psi.ArgumentList.Add("-b"); psi.ArgumentList.Add("transparent");
+        var psi = ExecutableResolver.Resolve(_mmdcPath,
+            ["-i", input, "-o", output, "-c", configFile, "-b", "transparent"])
+            ?? throw new MmdcNotFoundException();
 
         using var proc = new Process { StartInfo = psi };
         try { proc.Start(); }
         catch (System.ComponentModel.Win32Exception) { throw new MmdcNotFoundException(); }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(45));
         var linked = timeoutCts.Token;
         try
         {
+            proc.StandardInput.Close();
             var stderrTask = proc.StandardError.ReadToEndAsync(linked);
             await proc.StandardOutput.ReadToEndAsync(linked);
             await proc.WaitForExitAsync(linked);
