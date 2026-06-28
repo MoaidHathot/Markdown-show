@@ -80,23 +80,56 @@ public class DiagramRenderingRegressionTests
     }
 
     [SkippableFact]
-    public async Task Mermaid_gantt_grid_lines_are_visible_not_background()
+    public async Task Mermaid_gantt_renders_dark_themed_not_default_light()
     {
         Skip.IfNot(ToolAvailable("mmdc"), "mmdc (mermaid-cli) not installed");
         await using var r = NewRenderer();
 
-        var gantt = "gantt\n  title Roadmap\n  dateFormat YYYY-MM-DD\n  section Core\n  Parser :a1, 2026-01-01, 7d\n  Diagrams :a2, after a1, 5d\n";
+        var gantt = "gantt\n  title Roadmap\n  dateFormat YYYY-MM-DD\n  section Core\n  Parser :a1, 2026-01-01, 7d\n  Diagrams :a2, after a1, 5d\n  section UI\n  Terminal :b1, 2026-01-08, 6d\n";
         var req = DiagramRequest.Create(DiagramKind.Mermaid, gantt);
         var result = await r.RenderAsync(req, DiagramTheme.Dark);
 
         Assert.Equal(DiagramStatus.Ready, result.Status);
         Assert.NotNull(result.Png);
 
-        // Regression guard: the gantt grid/axis (drawn with currentColor) used to render the same
-        // color as the dark background and disappear. Require visible light-foreground pixels.
-        var (_, _, light) = AnalyzePixels(result.Png!);
-        Assert.True(light > 120, $"gantt grid/labels should be visible against the background (light pixels={light})");
+        // Composite onto the dark theme background, exactly as the terminal does, then inspect.
+        using var img = CompositeOnDark(result.Png!);
+
+        // Regression guard: the gantt grid/tick lines must be visible against the dark background.
+        // They are drawn with stroke="currentColor"; the earlier SVG->Svg.Skia path rasterized them
+        // black (invisible) — this is the regression. Count grid-colored (indigo) pixels across the
+        // whole image: a healthy gantt has thousands; an all-black grid collapses to near zero. The
+        // tight color band also excludes the brighter indigo task-bar borders.
+        int gridPixels = CountGridPixels(img);
+        Assert.True(gridPixels > 300,
+            $"gantt vertical grid/tick lines should be visible against the dark background (grid pixels={gridPixels})");
     }
+
+    private static SKBitmap CompositeOnDark(byte[] png)
+    {
+        using var src = SKBitmap.Decode(png);
+        var outb = new SKBitmap(src.Width, src.Height);
+        using var canvas = new SKCanvas(outb);
+        canvas.Clear(new SKColor(0x0d, 0x11, 0x17)); // readmd dark theme background
+        canvas.DrawBitmap(src, 0, 0);
+        return outb;
+    }
+
+    private static int CountGridPixels(SKBitmap bmp)
+    {
+        int count = 0;
+        for (int y = 0; y < bmp.Height; y++)
+            for (int x = 0; x < bmp.Width; x++)
+                if (IsGridIndigo(bmp.GetPixel(x, y))) count++;
+        return count;
+    }
+
+    // The theme grid color is ~#6b78c0 (rgb 107,120,192). Match a tolerant band around it that
+    // excludes black grid lines (the regression), the brighter title/label text, AND the even
+    // brighter indigo task-bar border (#7c8cf8 = rgb 124,140,248, whose blue is well above 215).
+    private static bool IsGridIndigo(SKColor c) =>
+        c.Red is >= 70 and <= 140 && c.Green is >= 80 and <= 150 && c.Blue is >= 150 and <= 215
+        && c.Blue > c.Red + 30; // bluer than it is red (rules out grays)
 
     [SkippableFact]
     public async Task D2_renders_a_nonempty_image()

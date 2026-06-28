@@ -39,14 +39,20 @@ internal sealed class MermaidCliRenderer
         var input = Path.Combine(dir, "in.mmd");
         var output = Path.Combine(dir, "out.png");
         var configFile = Path.Combine(dir, "config.json");
+        var cssFile = Path.Combine(dir, "style.css");
         try
         {
             await File.WriteAllTextAsync(input, request.Source, ct);
             // Keep htmlLabels:true — mmdc's browser renders the HTML labels natively, so we get
-            // correctly centered/wrapped text and visible gantt grid lines.
+            // correctly centered/wrapped text.
             await File.WriteAllTextAsync(configFile, MermaidTheme.ConfigJson(theme == DiagramTheme.Dark), ct);
+            // Set the SVG's `color` so elements drawn with stroke="currentColor" (notably the gantt
+            // grid/tick lines, which ignore the gridColor theme variable) resolve to a VISIBLE color
+            // instead of the browser default of black. This mirrors what the browser front-end and
+            // the Playwright renderer do by setting the page text color.
+            await File.WriteAllTextAsync(cssFile, CssFor(theme), ct);
 
-            await RunMmdcAsync(input, output, configFile, ct);
+            await RunMmdcAsync(input, output, configFile, cssFile, ct);
             if (!File.Exists(output))
                 return DiagramResult.Fail(request.Key, "mmdc produced no output.");
 
@@ -72,12 +78,34 @@ internal sealed class MermaidCliRenderer
         }
     }
 
-    private async Task RunMmdcAsync(string input, string output, string configFile, CancellationToken ct)
+    // CSS injected into mmdc's page to correct gantt rendering that the mermaid v11 "base" theme
+    // gets wrong for a dark palette: (1) currentColor (gantt grid/tick lines) resolves to a visible
+    // color; (2) the grid/ticks use the theme grid color; (3) the section bands use the theme's dark
+    // section colors instead of mermaid's algorithmically-computed light defaults, which otherwise
+    // render as a jarring light band on a dark background.
+    private static string CssFor(DiagramTheme theme)
+    {
+        var (fg, grid, section, altSection) = theme == DiagramTheme.Dark
+            ? ("#e6edf3", "#6b78c0", "#161b2e", "#1b2236")   // dark
+            : ("#1f2328", "#c2ccff", "#eef1ff", "#f6f8fa");  // light
+        return $$"""
+            svg { color: {{fg}}; }
+            .grid .tick line { stroke: {{grid}}; opacity: 0.5; }
+            .grid .tick text { fill: {{fg}}; }
+            .grid path { stroke: {{grid}}; }
+            g.today line { stroke: #f08c8c; }
+            .section, .section0, .section2 { fill: {{section}} !important; opacity: 0.5 !important; }
+            .section1, .section3 { fill: {{altSection}} !important; opacity: 0.5 !important; }
+            """;
+    }
+
+    private async Task RunMmdcAsync(string input, string output, string configFile, string cssFile, CancellationToken ct)
     {
         // -s 2 renders at 2x for crisp text when scaled into the terminal; -b transparent keeps the
-        // diagram background see-through so the theme background shows behind it.
+        // diagram background see-through so the theme background shows behind it; -C applies our CSS
+        // (the SVG `color` that makes currentColor-driven gantt grid lines visible).
         var psi = ExecutableResolver.Resolve(_mmdcPath,
-            ["-i", input, "-o", output, "-c", configFile, "-b", "transparent", "-s", "2"])
+            ["-i", input, "-o", output, "-c", configFile, "-C", cssFile, "-b", "transparent", "-s", "2"])
             ?? throw new MmdcNotFoundException();
 
         using var proc = new Process { StartInfo = psi };
