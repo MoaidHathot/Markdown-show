@@ -155,6 +155,26 @@ Remappable actions: `quit`, `scrollDown`, `scrollUp`, `pageDown`, `pageUp`,
 `selectionMode`, `rerender`, `toggleTheme`, `toggleBackground`, `help`. (Arrows,
 mouse, `Ctrl`-combinations, the `gg` prefix, and `1`–`9` link-following are fixed.)
 
+### Shell completions & man page
+
+`readmd` can print completion scripts for bash, zsh, fish, and PowerShell, plus a
+man page:
+
+```bash
+# bash / zsh (load now, or add the line to your rc file)
+source <(readmd completions bash)
+source <(readmd completions zsh)
+
+# fish
+readmd completions fish > ~/.config/fish/completions/readmd.fish
+
+# PowerShell (add to $PROFILE)
+readmd completions pwsh | Out-String | Invoke-Expression
+
+# man page
+readmd man > ~/.local/share/man/man1/readmd.1
+```
+
 ## How it works
 
 `readmd` is a single .NET 10 tool composed of five projects:

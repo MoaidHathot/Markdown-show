@@ -78,6 +78,22 @@ for (var i = root.Options.Count - 1; i >= 0; i--)
 }
 root.Options.Add(new VersionOption("--version", ["-v"]) { Action = new PrintVersionAction(version) });
 
+// `readmd completions <shell>` — print a shell completion script (bash/zsh/pwsh/fish).
+var shellArgument = new Argument<string>("shell") { Description = "Shell to generate completions for: bash, zsh, pwsh, or fish." };
+var completionsCommand = new Command("completions", "Print a shell completion script to stdout.") { shellArgument };
+completionsCommand.SetAction(parse =>
+{
+    var shell = parse.GetValue(shellArgument)!;
+    try { Console.Out.Write(ShellIntegration.ForShell(shell)); return 0; }
+    catch (ArgumentException ex) { Console.Error.WriteLine($"readmd: {ex.Message}"); return 2; }
+});
+root.Subcommands.Add(completionsCommand);
+
+// `readmd man` — print a troff man page to stdout (pipe to a file under man1/).
+var manCommand = new Command("man", "Print a man page (troff) to stdout.");
+manCommand.SetAction(_ => { Console.Out.Write(ShellIntegration.ManPage(version)); return 0; });
+root.Subcommands.Add(manCommand);
+
 root.SetAction(async (parse, ct) =>
 {
     var file = parse.GetValue(fileArgument)!;
