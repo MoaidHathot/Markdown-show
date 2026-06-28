@@ -38,10 +38,14 @@ public sealed class AnsiScreen : IDisposable
     public AnsiScreen()
     {
         EnableVirtualTerminal();
+        EnterRawModeUnix();
         Console.OutputEncoding = Encoding.UTF8;
         _stdout = Console.OpenStandardOutput();
-        // Enter alt screen, hide cursor, clear.
+        // Enter alt screen, hide cursor, clear. On non-Windows also enable SGR mouse reporting
+        // (button + drag) so KeyReader can parse wheel/click/drag; Windows uses the console API.
         WriteRaw("\e[?1049h\e[?25l\e[2J\e[H");
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            WriteRaw("\e[?1000h\e[?1002h\e[?1006h");
         Flush();
 
         // Safety net: if the process exits without Dispose (e.g. an unhandled exception or a
@@ -175,8 +179,11 @@ public sealed class AnsiScreen : IDisposable
         _restored = true;
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
         Console.CancelKeyPress -= OnCancelKeyPress;
-        // Show cursor, leave alt screen, reset.
+        // Disable SGR mouse reporting (non-Windows), show cursor, leave alt screen, reset.
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            WriteRaw("\e[?1006l\e[?1002l\e[?1000l");
         WriteRaw("\e[0m\e[?25h\e[?1049l");
+        RestoreRawModeUnix();
     }
 
     // ---------- Windows VT enablement ----------
@@ -225,4 +232,58 @@ public sealed class AnsiScreen : IDisposable
         if (_inputHandle != 0 && _savedInputMode != 0)
             SetConsoleMode(_inputHandle, _savedInputMode);
     }
+
+    // ---------- Unix raw mode (termios) ----------
+    // Putting the terminal in raw mode lets KeyReader read individual bytes (and mouse escape
+    // sequences) instead of line-buffered input. ISIG is kept so Ctrl+C still raises SIGINT.
+    private const int STDIN_FILENO = 0;
+    private const int TCSANOW = 0;
+
+    // c_lflag bits
+    private const uint ICANON = 0x0002, ECHO_ = 0x0008, IEXTEN = 0x8000;
+    // c_iflag bits
+    private const uint IXON = 0x0400, ICRNL = 0x0100, BRKINT = 0x0002, INPCK = 0x0010, ISTRIP = 0x0020;
+
+    private static byte[]? _savedTermios;
+    private static bool _rawModeSet;
+
+    private static void EnterRawModeUnix()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+        if (Console.IsInputRedirected) return;
+        try
+        {
+            var termios = new byte[256];
+            if (tcgetattr(STDIN_FILENO, termios) != 0) return;
+            _savedTermios = (byte[])termios.Clone();
+
+            // termios layout (Linux & macOS): c_iflag, c_oflag, c_cflag, c_lflag are the first four
+            // 4-byte fields. Clear the canonical/echo/signal-interfering bits but keep ISIG.
+            ref uint iflag = ref AsUInt(termios, 0);
+            ref uint lflag = ref AsUInt(termios, 12);
+            iflag &= ~(IXON | ICRNL | BRKINT | INPCK | ISTRIP);
+            lflag &= ~(ICANON | ECHO_ | IEXTEN);   // NOTE: ISIG intentionally left on (Ctrl+C works)
+
+            if (tcsetattr(STDIN_FILENO, TCSANOW, termios) == 0)
+                _rawModeSet = true;
+        }
+        catch (DllNotFoundException) { /* libc not present (unexpected on Unix) */ }
+        catch (EntryPointNotFoundException) { /* fall back to cooked mode */ }
+    }
+
+    private static void RestoreRawModeUnix()
+    {
+        if (!_rawModeSet || _savedTermios is null) return;
+        try { tcsetattr(STDIN_FILENO, TCSANOW, _savedTermios); } catch { /* best effort */ }
+        _rawModeSet = false;
+    }
+
+    private static ref uint AsUInt(byte[] buffer, int offset) =>
+        ref System.Runtime.InteropServices.MemoryMarshal.AsRef<uint>(buffer.AsSpan(offset, 4));
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int tcgetattr(int fd, [Out] byte[] termios_p);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int tcsetattr(int fd, int optional_actions, [In] byte[] termios_p);
 }

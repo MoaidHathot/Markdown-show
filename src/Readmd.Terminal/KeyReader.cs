@@ -37,40 +37,206 @@ internal static class KeyReader
         return ReadPortable(isRunning);
     }
 
+    /// <summary>
+    /// Test seam: parses a complete byte sequence (as a Unix terminal would deliver it) into the
+    /// events the portable reader would emit. Used to verify VT key and SGR mouse decoding.
+    /// </summary>
+    internal static List<KeyEvent> ParsePortableForTest(byte[] bytes)
+    {
+        var pending = new List<byte>(bytes);
+        var result = new List<KeyEvent>();
+        int consumed;
+        while (pending.Count > 0 && (consumed = TryParsePortable(pending, out var ev)) > 0)
+        {
+            pending.RemoveRange(0, consumed);
+            if (ev is not null) result.Add(ev);
+        }
+        return result;
+    }
+
     // ---------------- portable (non-Windows) ----------------
+    // Reads raw bytes from stdin (terminal in raw mode via termios) and parses VT escape
+    // sequences for keys and SGR mouse reports (CSI < b ; x ; y M/m). This brings wheel scroll,
+    // click-to-follow-link and drag-select to macOS/Linux, matching the Windows console reader.
     private static IEnumerable<KeyEvent> ReadPortable(Func<bool> isRunning)
     {
+        var stdin = Console.OpenStandardInput();
+        var buf = new byte[256];
+        var pending = new List<byte>(16);
+
         while (isRunning())
         {
-            ConsoleKeyInfo info;
-            try { info = Console.ReadKey(intercept: true); }
-            catch (InvalidOperationException) { yield break; }
-            var ev = FromConsoleKeyInfo(info);
-            if (ev is not null) yield return ev;
+            int n;
+            try { n = stdin.Read(buf, 0, buf.Length); }
+            catch (IOException) { yield break; }
+            catch (ObjectDisposedException) { yield break; }
+            if (n <= 0) { if (!isRunning()) yield break; continue; }
+
+            for (var i = 0; i < n; i++) pending.Add(buf[i]);
+
+            // Drain complete tokens from the pending buffer.
+            int consumed;
+            while ((consumed = TryParsePortable(pending, out var ev)) > 0)
+            {
+                pending.RemoveRange(0, consumed);
+                if (ev is not null) yield return ev;
+            }
         }
     }
 
-    private static KeyEvent? FromConsoleKeyInfo(ConsoleKeyInfo info)
+    // Returns the number of bytes consumed (0 if it needs more input to decide), and the parsed
+    // event (null when the bytes were a recognized-but-ignored sequence such as a CSI report).
+    private static int TryParsePortable(List<byte> b, out KeyEvent? ev)
     {
-        bool ctrl = info.Modifiers.HasFlag(ConsoleModifiers.Control);
-        switch (info.Key)
+        ev = null;
+        if (b.Count == 0) return 0;
+        byte c0 = b[0];
+
+        if (c0 != 0x1b) // not ESC: a plain key / control char / UTF-8 text byte
         {
-            case ConsoleKey.UpArrow: return new KeyEvent(KeyKind.Up);
-            case ConsoleKey.DownArrow: return new KeyEvent(KeyKind.Down);
-            case ConsoleKey.LeftArrow: return new KeyEvent(KeyKind.Left);
-            case ConsoleKey.RightArrow: return new KeyEvent(KeyKind.Right);
-            case ConsoleKey.Home: return new KeyEvent(KeyKind.Home);
-            case ConsoleKey.End: return new KeyEvent(KeyKind.End);
-            case ConsoleKey.PageUp: return new KeyEvent(KeyKind.PageUp);
-            case ConsoleKey.PageDown: return new KeyEvent(KeyKind.PageDown);
-            case ConsoleKey.Enter: return new KeyEvent(KeyKind.Enter);
-            case ConsoleKey.Escape: return new KeyEvent(KeyKind.Escape);
-            case ConsoleKey.Backspace: return new KeyEvent(KeyKind.Backspace);
-            case ConsoleKey.Tab: return new KeyEvent(KeyKind.Tab);
+            return ParsePortableByte(b, out ev);
         }
-        if (info.KeyChar != '\0')
-            return new KeyEvent(KeyKind.Char, info.KeyChar, ctrl);
-        return null;
+
+        // ESC alone (so far): could be a real Escape or the start of a sequence. Need ≥2 bytes.
+        if (b.Count == 1) return 0;
+        byte c1 = b[1];
+
+        if (c1 == '[' || c1 == 'O')
+        {
+            // CSI ('[') or SS3 ('O') sequence. Find the final byte (0x40–0x7E).
+            var end = -1;
+            for (var i = 2; i < b.Count; i++)
+            {
+                if (b[i] >= 0x40 && b[i] <= 0x7e) { end = i; break; }
+            }
+            if (end < 0) return b.Count > 64 ? b.Count : 0; // wait for more, but cap runaway
+
+            var seq = System.Text.Encoding.ASCII.GetString(b.ToArray(), 1, end); // without the ESC
+            ev = ParseCsi(seq);
+            return end + 1;
+        }
+
+        // ESC followed by a normal char: treat the ESC as a standalone Escape key, leave the rest.
+        ev = new KeyEvent(KeyKind.Escape);
+        return 1;
+    }
+
+    private static int ParsePortableByte(List<byte> b, out KeyEvent? ev)
+    {
+        ev = null;
+        byte c = b[0];
+        switch (c)
+        {
+            case 0x0d or 0x0a: ev = new KeyEvent(KeyKind.Enter); return 1;
+            case 0x7f or 0x08: ev = new KeyEvent(KeyKind.Backspace); return 1;
+            case 0x09: ev = new KeyEvent(KeyKind.Tab); return 1;
+            case 0x03: ev = new KeyEvent(KeyKind.Char, 'c', Ctrl: true); return 1;  // Ctrl+C
+        }
+        if (c is >= 1 and <= 26) // Ctrl+A..Z (excluding the ones handled above)
+        {
+            ev = new KeyEvent(KeyKind.Char, (char)('a' + (c - 1)), Ctrl: true);
+            return 1;
+        }
+        if (c < 0x80)
+        {
+            ev = new KeyEvent(KeyKind.Char, (char)c);
+            return 1;
+        }
+        // Multi-byte UTF-8: gather the full code point.
+        var len = c switch { >= 0xF0 => 4, >= 0xE0 => 3, _ => 2 };
+        if (b.Count < len) return 0; // need more bytes
+        var s = System.Text.Encoding.UTF8.GetString(b.ToArray(), 0, len);
+        ev = s.Length > 0 ? new KeyEvent(KeyKind.Char, s[0]) : null;
+        return len;
+    }
+
+    // Parses a CSI/SS3 body (everything after the ESC), e.g. "[A", "[1;5C", "[<0;12;7M".
+    private static KeyEvent? ParseCsi(string seq)
+    {
+        // SGR mouse: "[<b;x;yM" (press/move) or "[<b;x;ym" (release).
+        if (seq.Length > 2 && seq[0] == '[' && seq[1] == '<')
+        {
+            var final = seq[^1];
+            var body = seq[2..^1];
+            var parts = body.Split(';');
+            if (parts.Length == 3 &&
+                int.TryParse(parts[0], out var bcode) &&
+                int.TryParse(parts[1], out var col) &&
+                int.TryParse(parts[2], out var row))
+            {
+                return MouseFromSgr(bcode, col - 1, row - 1, release: final == 'm'); // 1-based -> 0-based
+            }
+            return null;
+        }
+
+        // Cursor/edit keys. Strip a leading '[' or 'O'.
+        var s = seq.Length > 0 && (seq[0] == '[' || seq[0] == 'O') ? seq[1..] : seq;
+        // Some terminals send modifiers like "1;5C"; we only need the final letter for our keys.
+        var key = s.Length > 0 ? s[^1] : '\0';
+        return key switch
+        {
+            'A' => new KeyEvent(KeyKind.Up),
+            'B' => new KeyEvent(KeyKind.Down),
+            'C' => new KeyEvent(KeyKind.Right),
+            'D' => new KeyEvent(KeyKind.Left),
+            'H' => new KeyEvent(KeyKind.Home),
+            'F' => new KeyEvent(KeyKind.End),
+            '~' => ParseTildeKey(s),
+            _ => null, // unrecognized report (e.g. CSI 14t reply) — ignore. CSI 't' handled below.
+        };
+    }
+
+    private static KeyEvent? ParseTildeKey(string s)
+    {
+        // s looks like "1~", "5~", "6~", possibly "5;3~". Take the leading number.
+        var semi = s.IndexOf(';');
+        var numStr = (semi >= 0 ? s[..semi] : s.TrimEnd('~'));
+        if (!int.TryParse(numStr, out var code)) return null;
+        return code switch
+        {
+            1 or 7 => new KeyEvent(KeyKind.Home),
+            4 or 8 => new KeyEvent(KeyKind.End),
+            5 => new KeyEvent(KeyKind.PageUp),
+            6 => new KeyEvent(KeyKind.PageDown),
+            _ => null,
+        };
+    }
+
+    // SGR mouse button code → our KeyEvent. Bit 0x40 marks wheel; 0x20 marks motion; low 2 bits
+    // are the button (0=left, 1=middle, 2=right). Modifiers: 0x10 ctrl, 0x08 alt, 0x04 shift.
+    private static KeyEvent? MouseFromSgr(int code, int col, int row, bool release)
+    {
+        bool ctrl = (code & 0x10) != 0;
+        if ((code & 0x40) != 0)
+        {
+            // Wheel: button 0 = up, 1 = down.
+            var up = (code & 0x03) == 0;
+            return up ? new KeyEvent(KeyKind.MouseScrollUp, Ctrl: ctrl)
+                      : new KeyEvent(KeyKind.MouseScrollDown, Ctrl: ctrl);
+        }
+
+        var button = code & 0x03;
+        bool motion = (code & 0x20) != 0;
+        if (motion)
+        {
+            // Drag with left button held (button bits read 0 during left-drag motion).
+            if (button == 0) return new KeyEvent(KeyKind.MouseDrag, MouseRow: row, MouseCol: col);
+            return null; // hover / other-button motion: ignore
+        }
+
+        if (release)
+        {
+            // Button up: treat a left-button release as the end of a drag.
+            return new KeyEvent(KeyKind.MouseDragEnd, MouseRow: row, MouseCol: col);
+        }
+
+        // Button press edge.
+        return button switch
+        {
+            2 => new KeyEvent(KeyKind.MouseRightClick, MouseRow: row, MouseCol: col),
+            0 => new KeyEvent(KeyKind.MouseClick, MouseRow: row, MouseCol: col),
+            _ => null, // middle button: ignore
+        };
     }
 
     // ---------------- Windows (ReadConsoleInputW) ----------------

@@ -90,11 +90,13 @@ Vim-style motions are supported throughout, plus the mouse wheel scrolls.
 | `m` | Mark mode (select + copy) | `q` (or `Ctrl+C`) | Quit |
 | `?` | Keybindings overlay | | |
 
-Mouse-wheel scrolling captures the mouse, which disables the terminal's native click-drag text
-selection. Press `m` to enter **mark mode** (the status bar shows `[SELECT]`): **drag** with the left
-button to select text, then **right-click** to copy the selection to the clipboard. `Esc` clears the
-selection; press `m` again to leave mark mode and restore wheel scrolling. Copy uses the Win32
-clipboard on Windows and OSC 52 elsewhere (Windows Terminal, WezTerm, kitty, iTerm2, …).
+On Windows, mouse-wheel scrolling captures the mouse, which disables the terminal's native
+click-drag text selection. Press `m` to enter **mark mode** (the status bar shows `[SELECT]`):
+**drag** with the left button to select text, then **right-click** to copy the selection to the
+clipboard. `Esc` clears the selection; press `m` again to leave mark mode and restore wheel
+scrolling. On macOS/Linux the mouse is always reported (SGR), so drag-select and right-click-copy
+work directly. Copy uses the Win32 clipboard on Windows and OSC 52 elsewhere (Windows Terminal,
+WezTerm, kitty, iTerm2, …).
 
 Theme and background can also be set at launch with `--theme` and `--background`.
 
@@ -131,7 +133,7 @@ Inline diagrams in the terminal use the **Sixel** graphics protocol. Supported t
 
 ## Platform support
 
-`readmd` targets .NET 10 and is cross-platform (Windows, macOS, Linux). A few terminal niceties are currently Windows-only: **mouse-wheel scrolling, click-to-follow-link, and the `m` select-mode** rely on the Windows console API. On macOS/Linux the viewer is fully keyboard-driven (all keybindings still work). The browser front-end is identical on every platform.
+`readmd` targets .NET 10 and is cross-platform (Windows, macOS, Linux). Mouse support — **wheel scrolling, click-to-follow-link, and drag-select in `m` mark mode** — works on all three: Windows uses the console API, while macOS/Linux use SGR mouse reporting (with the terminal put in raw mode via `termios`). Every keybinding works on all platforms, and the browser front-end is identical everywhere.
 
 > The first mermaid diagram triggers a one-time headless-browser (Chromium) download via Playwright, which can be large and may take a moment. Use `--best-effort` to skip it (mermaid then opens in your browser on demand). D2 requires the `d2` binary on your `PATH` (or `--d2-path`); if it's missing, the diagram area shows an actionable message.
 
