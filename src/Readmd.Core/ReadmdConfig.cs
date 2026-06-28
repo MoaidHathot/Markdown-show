@@ -1,0 +1,95 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Readmd.Core;
+
+/// <summary>
+/// User configuration for readmd, loaded from JSON. Discovered from a user-level file
+/// (<c>~/.config/readmd/config.json</c> or <c>%APPDATA%\readmd\config.json</c>) and an optional
+/// project-level <c>.readmd.json</c> found by walking up from the document; project settings
+/// override user settings. All members are optional — an absent file yields defaults.
+/// </summary>
+public sealed class ReadmdConfig
+{
+    /// <summary>Default theme when <c>--theme</c> isn't passed: "dark", "light", "auto", or a custom theme name.</summary>
+    [JsonPropertyName("theme")] public string? Theme { get; set; }
+
+    /// <summary>Default background when <c>--background</c> isn't passed: "solid"/"terminal".</summary>
+    [JsonPropertyName("background")] public string? Background { get; set; }
+
+    /// <summary>Default path to the <c>d2</c> executable when <c>--d2-path</c> isn't passed.</summary>
+    [JsonPropertyName("d2Path")] public string? D2Path { get; set; }
+
+    /// <summary>Path to a local <c>mmdc</c> (mermaid-cli) to render mermaid without Chromium.</summary>
+    [JsonPropertyName("mermaidCliPath")] public string? MermaidCliPath { get; set; }
+
+    /// <summary>Named custom color themes that can be selected via <see cref="Theme"/>.</summary>
+    [JsonPropertyName("themes")] public Dictionary<string, ColorTheme>? Themes { get; set; }
+
+    /// <summary>Keybinding overrides: action name -> single key character (e.g. "quit": "x").</summary>
+    [JsonPropertyName("keys")] public Dictionary<string, string>? Keys { get; set; }
+
+    public static ReadmdConfig Empty { get; } = new();
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
+
+    /// <summary>Parses config JSON, returning <see cref="Empty"/> on null/blank input.</summary>
+    public static ReadmdConfig Parse(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return Empty;
+        return JsonSerializer.Deserialize<ReadmdConfig>(json, JsonOptions) ?? Empty;
+    }
+
+    /// <summary>Returns a copy of this config with non-null values from <paramref name="overrides"/> applied.</summary>
+    public ReadmdConfig MergedWith(ReadmdConfig overrides)
+    {
+        var merged = new ReadmdConfig
+        {
+            Theme = overrides.Theme ?? Theme,
+            Background = overrides.Background ?? Background,
+            D2Path = overrides.D2Path ?? D2Path,
+            MermaidCliPath = overrides.MermaidCliPath ?? MermaidCliPath,
+            Themes = MergeDict(Themes, overrides.Themes),
+            Keys = MergeDict(Keys, overrides.Keys),
+        };
+        return merged;
+    }
+
+    private static Dictionary<string, T>? MergeDict<T>(Dictionary<string, T>? baseDict, Dictionary<string, T>? over)
+    {
+        if (baseDict is null) return over;
+        if (over is null) return baseDict;
+        var result = new Dictionary<string, T>(baseDict, StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, v) in over) result[k] = v;
+        return result;
+    }
+}
+
+/// <summary>
+/// A custom color palette defined in config. Any field left null falls back to the built-in
+/// dark/light value (selected by <see cref="Dark"/>), so a theme can override just a few colors.
+/// Colors are hex strings like "#rrggbb".
+/// </summary>
+public sealed class ColorTheme
+{
+    /// <summary>Whether this theme is a dark theme (selects the base palette to fill gaps).</summary>
+    [JsonPropertyName("dark")] public bool Dark { get; set; } = true;
+
+    [JsonPropertyName("text")] public string? Text { get; set; }
+    [JsonPropertyName("muted")] public string? Muted { get; set; }
+    [JsonPropertyName("heading")] public string? Heading { get; set; }
+    [JsonPropertyName("link")] public string? Link { get; set; }
+    [JsonPropertyName("code")] public string? Code { get; set; }
+    [JsonPropertyName("accent")] public string? Accent { get; set; }
+    [JsonPropertyName("rule")] public string? Rule { get; set; }
+    [JsonPropertyName("background")] public string? Background { get; set; }
+    [JsonPropertyName("backgroundElevated")] public string? BackgroundElevated { get; set; }
+    [JsonPropertyName("h1")] public string? H1 { get; set; }
+    [JsonPropertyName("h2")] public string? H2 { get; set; }
+    [JsonPropertyName("h3")] public string? H3 { get; set; }
+}

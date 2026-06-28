@@ -16,6 +16,12 @@ public sealed class TerminalViewerOptions
     /// </summary>
     public bool SolidBackground { get; init; }
 
+    /// <summary>Optional custom color palette (from config). When set, overrides the dark/light default.</summary>
+    public TerminalTheme? Theme { get; init; }
+
+    /// <summary>Optional key bindings (from config). Defaults to the built-in bindings.</summary>
+    public KeyMap? KeyMap { get; init; }
+
     /// <summary>Invoked when the user presses 'o' to open the current file in the browser.</summary>
     public Func<string, Task>? OpenInBrowser { get; init; }
 }
@@ -32,6 +38,7 @@ public sealed partial class TerminalViewer : IAsyncDisposable
     private readonly MarkdownRenderer _markdown = new();
     private readonly LinkResolver _resolver;
     private TerminalTheme _theme;
+    private KeyMap _keyMap = KeyMap.Default;
     private bool _solidBackground;
     private DiagramTheme _diagramTheme;
     private readonly DocumentWatcher _watcher;
@@ -106,7 +113,8 @@ public sealed partial class TerminalViewer : IAsyncDisposable
         var root = options.Root is not null ? Path.GetFullPath(options.Root) : Path.GetDirectoryName(_currentPath)!;
         _resolver = new LinkResolver(root);
         _imageLoader = new Readmd.Diagrams.ImageLoader(root);
-        _theme = TerminalTheme.For(options.DarkTerminal);
+        _theme = options.Theme ?? TerminalTheme.For(options.DarkTerminal);
+        _keyMap = options.KeyMap ?? KeyMap.Default;
         _solidBackground = options.SolidBackground;
         _diagramTheme = options.DiagramTheme;
         _watcher = new DocumentWatcher(_currentPath);

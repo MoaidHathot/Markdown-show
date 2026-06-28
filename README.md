@@ -113,6 +113,47 @@ The browser view uses the same vim-style motions, plus toggles to hide chrome:
 | `gg` / `G` | Top / bottom | `z` | Zen mode (hide all chrome) |
 | `Alt+←` / `Alt+→` | Back / forward | `[` | Toggle light / dark theme |
 
+## Configuration
+
+readmd reads an optional JSON config so you don't have to repeat flags, and can
+define custom color themes and remap keys. It looks for a user-level file —
+`~/.config/readmd/config.json` (honoring `XDG_CONFIG_HOME`) on macOS/Linux, or
+`%APPDATA%\readmd\config.json` on Windows — and a project-level `.readmd.json`
+found by walking up from the document's directory. Project settings override
+user settings; command-line flags override both. A missing or malformed file is
+ignored.
+
+```jsonc
+{
+  // Defaults used when the matching flag isn't passed:
+  "theme": "nord",            // "dark" | "light" | "auto" | a custom theme name below
+  "background": "solid",      // "solid" | "terminal"
+  "d2Path": "/usr/local/bin/d2",
+
+  // Custom terminal color themes (any omitted color falls back to the dark/light base):
+  "themes": {
+    "nord": {
+      "dark": true,
+      "text": "#d8dee9", "background": "#2e3440", "backgroundElevated": "#3b4252",
+      "h1": "#88c0d0", "h2": "#81a1c1", "h3": "#8fbcbb",
+      "link": "#5e81ac", "accent": "#b48ead", "rule": "#434c5e"
+    }
+  },
+
+  // Remap the common single-key actions (others keep their defaults):
+  "keys": {
+    "quit": "x",
+    "search": "s",
+    "pagedown": "space"
+  }
+}
+```
+
+Remappable actions: `quit`, `scrollDown`, `scrollUp`, `pageDown`, `pageUp`,
+`goBottom`, `search`, `searchNext`, `searchPrev`, `toc`, `openInBrowser`,
+`selectionMode`, `rerender`, `toggleTheme`, `toggleBackground`, `help`. (Arrows,
+mouse, `Ctrl`-combinations, the `gg` prefix, and `1`–`9` link-following are fixed.)
+
 ## How it works
 
 `readmd` is a single .NET 10 tool composed of five projects:

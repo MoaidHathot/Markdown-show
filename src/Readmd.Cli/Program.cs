@@ -29,16 +29,13 @@ var bestEffortOption = new Option<bool>("--best-effort")
 {
     Description = "Terminal mode: skip the headless-browser download; mermaid diagrams open in the browser instead.",
 };
-var themeOption = new Option<string>("--theme")
+var themeOption = new Option<string?>("--theme")
 {
-    Description = "Color theme: dark, light, or auto.",
-    DefaultValueFactory = _ => "auto",
+    Description = "Color theme: dark, light, auto, or a custom theme name from your config (default: auto).",
 };
-themeOption.AcceptOnlyFromAmong("dark", "light", "auto");
-var backgroundOption = new Option<string>("--background", ["--bg"])
+var backgroundOption = new Option<string?>("--background", ["--bg"])
 {
     Description = "Background fill: 'solid' paints a solid themed background (overrides terminal transparency); 'terminal' lets the terminal background show through.",
-    DefaultValueFactory = _ => "terminal",
 };
 backgroundOption.AcceptOnlyFromAmong("solid", "terminal", "opaque", "on", "off");
 var d2PathOption = new Option<string?>("--d2-path")
@@ -88,9 +85,9 @@ root.SetAction(async (parse, ct) =>
     var port = parse.GetValue(portOption);
     var noOpen = parse.GetValue(noOpenOption);
     var bestEffort = parse.GetValue(bestEffortOption);
-    var themeStr = parse.GetValue(themeOption) ?? "auto";
-    var backgroundStr = parse.GetValue(backgroundOption) ?? "terminal";
-    var d2Path = parse.GetValue(d2PathOption);
+    var themeArg = parse.GetValue(themeOption);
+    var backgroundArg = parse.GetValue(backgroundOption);
+    var d2PathArg = parse.GetValue(d2PathOption);
     var exportPath = parse.GetValue(exportOption);
     var print = parse.GetValue(printOption);
 
@@ -110,17 +107,42 @@ root.SetAction(async (parse, ct) =>
         }
     }
 
+    // Config: user-level + project-level (.readmd.json) merged; CLI flags take precedence over it.
+    var config = ConfigLoader.Load(fromStdin ? null : full);
+    var themeStr = themeArg ?? config.Theme ?? "auto";
+    var backgroundStr = backgroundArg ?? config.Background ?? "terminal";
+    var d2Path = d2PathArg ?? config.D2Path;
+
     if (port is < 0 or > 65535)
     {
         Console.Error.WriteLine($"readmd: --port must be between 0 and 65535 (got {port}).");
         return 2;
     }
+    if (backgroundStr.Trim().ToLowerInvariant() is not ("solid" or "terminal" or "opaque" or "on" or "off"))
+    {
+        Console.Error.WriteLine($"readmd: --background must be 'solid' or 'terminal' (got '{backgroundStr}').");
+        return 2;
+    }
     if (browser && (bestEffort || backgroundStr is "solid" or "opaque" or "on"))
         Console.Error.WriteLine("readmd: note — --best-effort and --background only affect terminal mode and are ignored with --browser.");
 
-    var dark = ResolveDark(themeStr);
+    // Resolve the theme: a custom config theme name, or built-in dark/light/auto.
+    Readmd.Terminal.TerminalTheme? customTheme = null;
+    bool dark;
+    if (config.Themes is not null && config.Themes.TryGetValue(themeStr, out var colorTheme))
+    {
+        customTheme = Readmd.Terminal.TerminalTheme.FromColorTheme(colorTheme);
+        dark = colorTheme.Dark;
+    }
+    else
+    {
+        if (themeStr is not ("dark" or "light" or "auto") && themeArg is not null)
+            Console.Error.WriteLine($"readmd: note — unknown theme '{themeStr}', using auto.");
+        dark = ResolveDark(themeStr);
+    }
     var solidBackground = backgroundStr.Trim().ToLowerInvariant() is "solid" or "opaque" or "on";
     var diagramTheme = dark ? DiagramTheme.Dark : DiagramTheme.Light;
+    var keyMap = Readmd.Terminal.KeyMap.FromConfig(config.Keys);
 
     var diagrams = new DiagramRenderer(new DiagramRendererOptions
     {
@@ -146,7 +168,7 @@ root.SetAction(async (parse, ct) =>
         {
             return await RunBrowserAsync(full, port, noOpen, diagramTheme, diagrams, ct);
         }
-        return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, ct);
+        return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, customTheme, keyMap, ct);
     }
     catch (OperationCanceledException)
     {
@@ -287,7 +309,7 @@ static async Task<int> RunBrowserAsync(string file, int port, bool noOpen, Diagr
     return 0;
 }
 
-static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme theme, IDiagramRenderer diagrams, int port, bool solidBackground, CancellationToken ct)
+static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme theme, IDiagramRenderer diagrams, int port, bool solidBackground, Readmd.Terminal.TerminalTheme? customTheme, Readmd.Terminal.KeyMap keyMap, CancellationToken ct)
 {
     // One-off browser server spun up by the viewer's 'o' action; tracked so we can dispose it.
     WebViewerServer? sideServer = null;
@@ -297,6 +319,8 @@ static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme the
         DarkTerminal = dark,
         DiagramTheme = theme,
         SolidBackground = solidBackground,
+        Theme = customTheme,
+        KeyMap = keyMap,
         OpenInBrowser = async path =>
         {
             // Reuse a single side server across 'o' presses instead of leaking one each time.
