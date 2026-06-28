@@ -21,6 +21,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Readmd.Core\Readmd.Core.csproj" />
     <ProjectReference Include="..\..\src\Readmd.Terminal\Readmd.Terminal.csproj" />
+    <ProjectReference Include="..\..\src\Readmd.Web\Readmd.Web.csproj" />
+    <ProjectReference Include="..\..\src\Readmd.Diagrams\Readmd.Diagrams.csproj" />
   </ItemGroup>
 
 </Project>

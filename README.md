@@ -17,7 +17,7 @@ dnx readmd report.md --browser       # view in the browser (full fidelity)
 - **GitHub alerts** (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) with colored icons and titles.
 - **Task lists** (`- [x]` / `- [ ]`) rendered as ☑ / ☐, **footnotes** with linked markers, and **definition lists**.
 - **Tables** honor column alignment (left/center/right) and **wrap** wide cells instead of truncating; long URLs wrap rather than clipping.
-- **YAML front matter** is recognized and stripped (it won't leak into the rendered document).
+- **YAML front matter** is recognized and used for document metadata: the `title` sets the document/window title, and `title`/`author`/`date`/`tags` render as a compact header (the raw block never leaks into the body).
 - **Live reload** on file change. The browser preserves scroll position (DOM-morphing instead of full reload); the terminal repaints in place and caches diagrams so they don't flicker.
 - **Search & navigation**: `/` to search, `n`/`N` to jump, `t` for a table-of-contents overlay, `?` for keybindings.
 - **Azure DevOps `[[_TOC_]]`** marker support, plus a sticky TOC sidebar in the browser.
@@ -25,11 +25,13 @@ dnx readmd report.md --browser       # view in the browser (full fidelity)
 - **Math** via KaTeX (browser) / a Unicode approximation (terminal), **code** via TextMate (terminal) / highlight.js (browser).
 - **Multi-file wiki navigation**: follow local `.md` links with back/forward history (sandboxed to the document's directory). Opening an external link asks for confirmation first.
 - **Browser mode** (`--browser`) for pixel-perfect rendering, served locally (loopback only) from an embedded web server.
+- **Export & piping**: `--export` writes a self-contained `.html` or `.pdf`; with a redirected stdout (or stdin via `-`) it renders to text, so `readmd file.md | less -R` and `cat file.md | readmd -` just work.
 
 ## Usage
 
 ```
 readmd <file> [options]
+readmd -            # read Markdown from standard input
 
 Options:
   -b, --browser        Open in the browser instead of the terminal.
@@ -37,6 +39,10 @@ Options:
       --no-open        In browser mode, start the server but don't launch a browser.
       --best-effort    Terminal mode: skip the headless-browser download; mermaid
                        diagrams open in the browser instead of rendering inline.
+  -e, --export <path>  Export to a self-contained file and exit; format from the
+        (-o)           extension: .html (single file, assets inlined) or .pdf.
+      --print          Render to stdout and exit (plain text, or ANSI on a TTY).
+                       Implied when stdout is a pipe/file, or when reading stdin.
       --theme <theme>  Color theme: dark, light, or auto (auto honors COLORFGBG,
                        else defaults to dark).
       --background <b>  'solid' paints a solid themed background (overrides terminal
@@ -46,6 +52,25 @@ Options:
   -v, --version        Print the version and exit.
   -h, --help           Show help.
 ```
+
+### Export & piping
+
+readmd is pipeline-friendly. When stdout is redirected (or you read from stdin),
+it renders to text instead of starting the interactive UI:
+
+```bash
+readmd report.md | less -R              # paged, ANSI-colored when the pager is a TTY
+readmd report.md > report.txt           # plain text (styles stripped)
+cat report.md | readmd -                # render from stdin
+readmd report.md --export report.html   # one self-contained HTML file (assets inlined)
+readmd report.md --export report.pdf    # PDF (rendered via the bundled headless browser)
+```
+
+Exported HTML is fully standalone: CSS, JavaScript and KaTeX fonts are inlined,
+local images become data URIs, D2 diagrams are pre-rendered to inline SVG, and
+mermaid/KaTeX run client-side from the embedded libraries — so the file opens
+anywhere with no server. PDF export reuses that HTML through the same headless
+Chromium that renders mermaid.
 
 ### Terminal keybindings
 

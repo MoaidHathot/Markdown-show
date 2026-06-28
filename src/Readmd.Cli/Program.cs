@@ -45,6 +45,14 @@ var d2PathOption = new Option<string?>("--d2-path")
 {
     Description = "Explicit path to the d2 executable (defaults to 'd2' on PATH).",
 };
+var exportOption = new Option<string?>("--export", ["-e", "-o"])
+{
+    Description = "Export to a self-contained file and exit. The format is chosen from the extension: .html (default) or .pdf.",
+};
+var printOption = new Option<bool>("--print")
+{
+    Description = "Render to stdout and exit (plain text, or ANSI when stdout is a terminal). Implied when stdout is redirected to a pipe or file.",
+};
 
 var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
               ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString()
@@ -60,6 +68,8 @@ var root = new RootCommand("readmd — a terminal-first Markdown viewer with liv
     themeOption,
     backgroundOption,
     d2PathOption,
+    exportOption,
+    printOption,
 };
 
 // Replace the built-in --version (which prints the bare version) with a branded one that
@@ -74,13 +84,6 @@ root.Options.Add(new VersionOption("--version", ["-v"]) { Action = new PrintVers
 root.SetAction(async (parse, ct) =>
 {
     var file = parse.GetValue(fileArgument)!;
-    var full = Path.GetFullPath(file);
-    if (!File.Exists(full))
-    {
-        Console.Error.WriteLine($"readmd: file not found: {file}");
-        return 2;
-    }
-
     var browser = parse.GetValue(browserOption);
     var port = parse.GetValue(portOption);
     var noOpen = parse.GetValue(noOpenOption);
@@ -88,6 +91,24 @@ root.SetAction(async (parse, ct) =>
     var themeStr = parse.GetValue(themeOption) ?? "auto";
     var backgroundStr = parse.GetValue(backgroundOption) ?? "terminal";
     var d2Path = parse.GetValue(d2PathOption);
+    var exportPath = parse.GetValue(exportOption);
+    var print = parse.GetValue(printOption);
+
+    var fromStdin = file == "-";
+    string full;
+    if (fromStdin)
+    {
+        full = "-";
+    }
+    else
+    {
+        full = Path.GetFullPath(file);
+        if (!File.Exists(full))
+        {
+            Console.Error.WriteLine($"readmd: file not found: {file}");
+            return 2;
+        }
+    }
 
     if (port is < 0 or > 65535)
     {
@@ -107,8 +128,20 @@ root.SetAction(async (parse, ct) =>
         D2Path = d2Path,
     });
 
+    // Non-interactive modes: stdin always prints; a redirected stdout implies --print.
+    var stdoutRedirected = Console.IsOutputRedirected;
+    var shouldPrint = print || (fromStdin && exportPath is null) || (stdoutRedirected && exportPath is null && !browser);
+
     try
     {
+        if (exportPath is not null)
+        {
+            return await RunExportAsync(full, fromStdin, exportPath, diagramTheme, diagrams, ct);
+        }
+        if (shouldPrint)
+        {
+            return await RunPrintAsync(full, fromStdin, dark, ct);
+        }
         if (browser)
         {
             return await RunBrowserAsync(full, port, noOpen, diagramTheme, diagrams, ct);
@@ -163,6 +196,72 @@ static bool DetectDark()
     }
     // Apple Terminal/light hints are unreliable; default to dark (most terminals are dark).
     return true;
+}
+
+// Reads the document text from a file path or, when path is "-", from standard input.
+static async Task<string> ReadInputAsync(string fullPathOrDash, bool fromStdin, CancellationToken ct)
+{
+    if (fromStdin)
+    {
+        using var stdin = Console.OpenStandardInput();
+        using var reader = new StreamReader(stdin);
+        return await reader.ReadToEndAsync(ct);
+    }
+    return await File.ReadAllTextAsync(fullPathOrDash, ct);
+}
+
+// --export: write a self-contained .html or .pdf and exit.
+static async Task<int> RunExportAsync(string full, bool fromStdin, string exportPath, DiagramTheme theme, IDiagramRenderer diagrams, CancellationToken ct)
+{
+    var outFull = Path.GetFullPath(exportPath);
+    var isPdf = Path.GetExtension(outFull).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    // HtmlExporter works from a file on disk (for image sandboxing); stage stdin to a temp file.
+    string sourcePath = full;
+    string? temp = null;
+    if (fromStdin)
+    {
+        var text = await ReadInputAsync(full, fromStdin: true, ct);
+        temp = Path.Combine(Path.GetTempPath(), $"readmd-stdin-{Guid.NewGuid():N}.md");
+        await File.WriteAllTextAsync(temp, text, ct);
+        sourcePath = temp;
+    }
+
+    try
+    {
+        var html = await HtmlExporter.ExportAsync(sourcePath, diagrams, theme, ct);
+        if (isPdf)
+        {
+            var pdf = await PdfRenderer.RenderAsync(html, ct);
+            await File.WriteAllBytesAsync(outFull, pdf, ct);
+        }
+        else
+        {
+            await File.WriteAllTextAsync(outFull, html, ct);
+        }
+        Console.Error.WriteLine($"readmd: wrote {outFull}");
+        return 0;
+    }
+    finally
+    {
+        if (temp is not null) { try { File.Delete(temp); } catch { /* ignore */ } }
+    }
+}
+
+// --print / non-TTY: render to stdout (ANSI when stdout is a terminal, plain text otherwise).
+static async Task<int> RunPrintAsync(string full, bool fromStdin, bool dark, CancellationToken ct)
+{
+    var markdown = await ReadInputAsync(full, fromStdin, ct);
+    var color = !Console.IsOutputRedirected;
+    var width = color && Console.WindowWidth > 0 ? Console.WindowWidth : 100;
+    var text = DocumentTextRenderer.Render(markdown, dark, width, color);
+    // Write UTF-8 bytes straight to the raw stdout stream so box-drawing/Unicode survives a
+    // redirected pipe or file regardless of the console's default code page.
+    var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+    await using var stdout = Console.OpenStandardOutput();
+    await stdout.WriteAsync(bytes, ct);
+    await stdout.FlushAsync(ct);
+    return 0;
 }
 
 static async Task<int> RunBrowserAsync(string file, int port, bool noOpen, DiagramTheme theme, IDiagramRenderer diagrams, CancellationToken ct)
