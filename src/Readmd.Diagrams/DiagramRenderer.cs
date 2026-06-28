@@ -41,29 +41,50 @@ public sealed class DiagramRenderer : IDiagramRenderer
     private readonly D2Renderer _d2;
     private readonly GraphvizRenderer _graphviz;
     private readonly PlantUmlRenderer _plantUml;
-    private readonly MermaidRenderer? _mermaid;
-    private readonly MermaidCliRenderer? _mmdc;
+    private readonly bool _bestEffort;
+    private readonly MermaidCliRenderer _mmdcCandidate;
     private readonly ConcurrentDictionary<string, Task<DiagramResult>> _inflight = new();
     // Cap concurrent renders so a document with many diagrams can't spawn an unbounded number of
     // Chromium pages / d2 processes at once (memory spike protection).
     private readonly SemaphoreSlim _renderGate = new(Math.Max(2, Environment.ProcessorCount / 2));
 
+    // The mermaid backend is selected lazily on the FIRST mermaid render, not in the constructor:
+    // detecting mmdc spawns a child process (an npm shim → pwsh/Node) that can cost ~1s, and doing
+    // that at construction time stalled every readmd startup (including --print/--export and docs
+    // with no diagrams at all). The selection still does the explicit availability pre-check — it's
+    // just deferred and computed at most once.
+    private readonly object _mermaidGate = new();
+    private bool _mermaidSelected;
+    private MermaidCliRenderer? _mmdc;
+    private MermaidRenderer? _mermaid;
+
     public DiagramRenderer(DiagramRendererOptions? options = null)
     {
         options ??= new DiagramRendererOptions();
+        _bestEffort = options.BestEffort;
         _cache = new DiagramCache(options.CacheDirectory);
         _cache.EvictOldEntries();   // best-effort cleanup of orphaned/old cache files at startup
         _d2 = new D2Renderer(options.D2Path);
         _graphviz = new GraphvizRenderer(options.GraphvizPath);
         _plantUml = new PlantUmlRenderer(options.PlantUmlPath);
+        _mmdcCandidate = new MermaidCliRenderer(options.MermaidCliPath);
+    }
 
-        // Prefer a local mmdc (no Chromium download). Use it if a path is configured or "mmdc" is
-        // on PATH. Fall back to the bundled Playwright renderer unless we're in --best-effort mode.
-        var mmdc = new MermaidCliRenderer(options.MermaidCliPath);
-        if (mmdc.IsAvailable())
-            _mmdc = mmdc;
-        else if (!options.BestEffort)
-            _mermaid = new MermaidRenderer();
+    // Chooses the mermaid backend once: prefer a local mmdc (no Chromium download) when available,
+    // otherwise the bundled Playwright renderer (unless --best-effort). Runs the mmdc availability
+    // probe at most once, on the first mermaid diagram, off the startup path.
+    private void EnsureMermaidBackend()
+    {
+        if (_mermaidSelected) return;
+        lock (_mermaidGate)
+        {
+            if (_mermaidSelected) return;
+            if (_mmdcCandidate.IsAvailable())
+                _mmdc = _mmdcCandidate;
+            else if (!_bestEffort)
+                _mermaid = new MermaidRenderer();
+            _mermaidSelected = true;
+        }
     }
 
     public DiagramResult? TryGet(string key)
@@ -106,6 +127,7 @@ public sealed class DiagramRenderer : IDiagramRenderer
 
     private async Task<DiagramResult> RenderMermaidAsync(DiagramRequest request, DiagramTheme theme, CancellationToken ct)
     {
+        EnsureMermaidBackend();
         // Prefer a local mmdc (lighter, no Chromium); fall back to the Playwright renderer.
         if (_mmdc is not null)
             return await _mmdc.RenderAsync(request, theme, ct);

@@ -26,8 +26,8 @@ internal sealed class MermaidCliRenderer
             if (psi is null) return false;
             using var proc = Process.Start(psi);
             if (proc is null) return false;
-            proc.WaitForExit(8000);
-            return proc.ExitCode == 0;
+            proc.WaitForExit(2500);
+            return proc.HasExited && proc.ExitCode == 0;
         }
         catch { return false; }
     }

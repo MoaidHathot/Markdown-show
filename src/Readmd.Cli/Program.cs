@@ -161,7 +161,11 @@ root.SetAction(async (parse, ct) =>
     var keyMap = Readmd.Terminal.KeyMap.FromConfig(config.Keys);
     var graphicsMode = Readmd.Terminal.TerminalCapabilities.Resolve(config.Graphics);
 
-    var diagrams = new DiagramRenderer(new DiagramRendererOptions
+    // The diagram renderer is created lazily, only for the paths that actually render diagrams
+    // (terminal / browser / export). --print and stdin text output never touch it, so they skip
+    // its construction (and its on-disk cache scan) entirely.
+    DiagramRenderer? diagrams = null;
+    DiagramRenderer GetDiagrams() => diagrams ??= new DiagramRenderer(new DiagramRendererOptions
     {
         BestEffort = bestEffort,
         D2Path = d2Path,
@@ -178,7 +182,7 @@ root.SetAction(async (parse, ct) =>
     {
         if (exportPath is not null)
         {
-            return await RunExportAsync(full, fromStdin, exportPath, diagramTheme, diagrams, ct);
+            return await RunExportAsync(full, fromStdin, exportPath, diagramTheme, GetDiagrams(), ct);
         }
         if (shouldPrint)
         {
@@ -186,9 +190,9 @@ root.SetAction(async (parse, ct) =>
         }
         if (browser)
         {
-            return await RunBrowserAsync(full, port, noOpen, diagramTheme, diagrams, ct);
+            return await RunBrowserAsync(full, port, noOpen, diagramTheme, GetDiagrams(), ct);
         }
-        return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, customTheme, keyMap, graphicsMode, ct);
+        return await RunTerminalAsync(full, dark, diagramTheme, GetDiagrams(), port, solidBackground, customTheme, keyMap, graphicsMode, ct);
     }
     catch (OperationCanceledException)
     {
@@ -212,7 +216,7 @@ root.SetAction(async (parse, ct) =>
     }
     finally
     {
-        await diagrams.DisposeAsync();
+        if (diagrams is not null) await diagrams.DisposeAsync();
     }
 });
 
