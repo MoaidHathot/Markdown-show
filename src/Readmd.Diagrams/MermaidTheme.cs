@@ -1,21 +1,38 @@
 namespace Readmd.Diagrams;
 
 /// <summary>
-/// Shared mermaid theme configuration so terminal (Playwright) and browser renders look identical:
-/// a richer, more colorful "base" theme with indigo/violet accents (mermaid.live-like).
+/// Single source of truth for the mermaid theme: a richer, more colorful "base" theme with
+/// indigo/violet accents (mermaid.live-like). Used by the terminal (Playwright) render and,
+/// via <see cref="ThemeVariablesByMode"/>, injected into the browser shell so both front-ends
+/// look identical instead of maintaining two copies of the palette.
 /// </summary>
-internal static class MermaidTheme
+public static class MermaidTheme
 {
-    public static string ConfigJson(bool dark) => dark ? DarkJson : LightJson;
-
-    private const string DarkJson = """
+    /// <summary>The full mermaid <c>initialize</c> config (with <c>startOnLoad:false</c>) for a Playwright render.</summary>
+    internal static string ConfigJson(bool dark) =>
+        $$"""
         {
           "startOnLoad": false,
           "theme": "base",
           "securityLevel": "loose",
           "flowchart": { "curve": "basis", "htmlLabels": true, "padding": 12 },
           "sequence": { "useMaxWidth": true, "mirrorActors": false },
-          "themeVariables": {
+          "themeVariables": {{ThemeVariablesJson(dark)}}
+        }
+        """;
+
+    /// <summary>
+    /// Both palettes as <c>{ "dark": { … }, "light": { … } }</c>, for injection into the browser
+    /// shell so <c>app.js</c> reuses these variables instead of hardcoding its own copy.
+    /// </summary>
+    public static string ThemeVariablesByMode() =>
+        $$"""{ "dark": {{ThemeVariablesJson(true)}}, "light": {{ThemeVariablesJson(false)}} }""";
+
+    /// <summary>The <c>themeVariables</c> object (only) for the given mode.</summary>
+    internal static string ThemeVariablesJson(bool dark) => dark ? DarkVars : LightVars;
+
+    private const string DarkVars = """
+        {
             "darkMode": true, "background": "#0d1117",
             "primaryColor": "#1f2740", "primaryTextColor": "#e6edf3", "primaryBorderColor": "#7c8cf8",
             "lineColor": "#8b9bf4", "secondaryColor": "#2a2150", "tertiaryColor": "#13202f",
@@ -38,18 +55,11 @@ internal static class MermaidTheme
             "pie5": "#e0a458", "pie6": "#d6678c", "pie7": "#7c8cf8", "pie8": "#a371f7",
             "attributeBackgroundColorOdd": "#161b2e", "attributeBackgroundColorEven": "#1b2236",
             "fontFamily": "Segoe UI, system-ui, sans-serif"
-          }
         }
         """;
 
-    private const string LightJson = """
+    private const string LightVars = """
         {
-          "startOnLoad": false,
-          "theme": "base",
-          "securityLevel": "loose",
-          "flowchart": { "curve": "basis", "htmlLabels": true, "padding": 12 },
-          "sequence": { "useMaxWidth": true, "mirrorActors": false },
-          "themeVariables": {
             "darkMode": false, "background": "#ffffff",
             "primaryColor": "#eef1ff", "primaryTextColor": "#1f2330", "primaryBorderColor": "#6b7cff",
             "lineColor": "#6b7cff", "secondaryColor": "#f3edff", "tertiaryColor": "#f6f8fa",
@@ -72,7 +82,6 @@ internal static class MermaidTheme
             "pie5": "#bf8700", "pie6": "#cf222e", "pie7": "#6b7cff", "pie8": "#8250df",
             "attributeBackgroundColorOdd": "#eef1ff", "attributeBackgroundColorEven": "#f6f8fa",
             "fontFamily": "Segoe UI, system-ui, sans-serif"
-          }
         }
         """;
 }

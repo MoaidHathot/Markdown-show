@@ -11,6 +11,19 @@ public sealed class DiagramRendererOptions
     /// <summary>Optional explicit path to the <c>d2</c> binary; defaults to "d2" on PATH.</summary>
     public string? D2Path { get; init; }
 
+    /// <summary>
+    /// Optional path to a local <c>mmdc</c> (mermaid-cli). When set (or when "mmdc" is found on
+    /// PATH), mermaid is rendered via mmdc instead of the bundled Playwright/Chromium, avoiding the
+    /// one-time browser download. A null value still lets readmd auto-detect "mmdc" on PATH.
+    /// </summary>
+    public string? MermaidCliPath { get; init; }
+
+    /// <summary>Optional explicit path to the Graphviz <c>dot</c> binary; defaults to "dot" on PATH.</summary>
+    public string? GraphvizPath { get; init; }
+
+    /// <summary>Optional explicit path to the <c>plantuml</c> launcher; defaults to "plantuml" on PATH.</summary>
+    public string? PlantUmlPath { get; init; }
+
     /// <summary>Directory for the on-disk diagram cache.</summary>
     public string CacheDirectory { get; init; } =
         Path.Combine(Path.GetTempPath(), "readmd", "diagram-cache");
@@ -18,15 +31,18 @@ public sealed class DiagramRendererOptions
 
 /// <summary>
 /// The composite diagram renderer used by both front-ends. Renders D2 in-process (SVG→PNG) and
-/// mermaid via headless Chromium, caches every result by content hash, and coalesces duplicate
-/// concurrent requests so a diagram that appears twice is only rendered once.
+/// mermaid via a local <c>mmdc</c> when available, otherwise headless Chromium. It caches every
+/// result by content hash and coalesces duplicate concurrent requests so a diagram that appears
+/// twice is only rendered once.
 /// </summary>
 public sealed class DiagramRenderer : IDiagramRenderer
 {
     private readonly DiagramCache _cache;
     private readonly D2Renderer _d2;
+    private readonly GraphvizRenderer _graphviz;
+    private readonly PlantUmlRenderer _plantUml;
     private readonly MermaidRenderer? _mermaid;
-    private readonly bool _bestEffort;
+    private readonly MermaidCliRenderer? _mmdc;
     private readonly ConcurrentDictionary<string, Task<DiagramResult>> _inflight = new();
     // Cap concurrent renders so a document with many diagrams can't spawn an unbounded number of
     // Chromium pages / d2 processes at once (memory spike protection).
@@ -35,11 +51,19 @@ public sealed class DiagramRenderer : IDiagramRenderer
     public DiagramRenderer(DiagramRendererOptions? options = null)
     {
         options ??= new DiagramRendererOptions();
-        _bestEffort = options.BestEffort;
         _cache = new DiagramCache(options.CacheDirectory);
         _cache.EvictOldEntries();   // best-effort cleanup of orphaned/old cache files at startup
         _d2 = new D2Renderer(options.D2Path);
-        _mermaid = options.BestEffort ? null : new MermaidRenderer();
+        _graphviz = new GraphvizRenderer(options.GraphvizPath);
+        _plantUml = new PlantUmlRenderer(options.PlantUmlPath);
+
+        // Prefer a local mmdc (no Chromium download). Use it if a path is configured or "mmdc" is
+        // on PATH. Fall back to the bundled Playwright renderer unless we're in --best-effort mode.
+        var mmdc = new MermaidCliRenderer(options.MermaidCliPath);
+        if (mmdc.IsAvailable())
+            _mmdc = mmdc;
+        else if (!options.BestEffort)
+            _mermaid = new MermaidRenderer();
     }
 
     public DiagramResult? TryGet(string key)
@@ -66,6 +90,8 @@ public sealed class DiagramRenderer : IDiagramRenderer
             DiagramResult result = request.Kind switch
             {
                 DiagramKind.D2 => await _d2.RenderAsync(request, theme, ct),
+                DiagramKind.Graphviz => await _graphviz.RenderAsync(request, theme, ct),
+                DiagramKind.PlantUml => await _plantUml.RenderAsync(request, theme, ct),
                 DiagramKind.Mermaid => await RenderMermaidAsync(request, theme, ct),
                 _ => DiagramResult.Fail(request.Key, "Unsupported diagram kind"),
             };
@@ -80,12 +106,15 @@ public sealed class DiagramRenderer : IDiagramRenderer
 
     private async Task<DiagramResult> RenderMermaidAsync(DiagramRequest request, DiagramTheme theme, CancellationToken ct)
     {
-        if (_bestEffort || _mermaid is null)
-        {
-            return DiagramResult.Fail(request.Key,
-                "Mermaid rendering is disabled in --best-effort mode. Open in the browser to view this diagram.");
-        }
-        return await _mermaid.RenderAsync(request, theme, ct);
+        // Prefer a local mmdc (lighter, no Chromium); fall back to the Playwright renderer.
+        if (_mmdc is not null)
+            return await _mmdc.RenderAsync(request, theme, ct);
+        if (_mermaid is not null)
+            return await _mermaid.RenderAsync(request, theme, ct);
+
+        return DiagramResult.Fail(request.Key,
+            "Mermaid rendering is disabled in --best-effort mode (and no local 'mmdc' was found). " +
+            "Install mermaid-cli (npm i -g @mermaid-js/mermaid-cli) or open in the browser to view this diagram.");
     }
 
     public async ValueTask DisposeAsync()

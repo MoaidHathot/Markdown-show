@@ -3,8 +3,9 @@ using Markdig.Syntax;
 namespace Readmd.Core;
 
 /// <summary>
-/// Walks the parsed AST and collects fenced code blocks whose info string is
-/// <c>mermaid</c> or <c>d2</c>, turning them into cacheable <see cref="DiagramRequest"/>s.
+/// Walks the parsed AST and collects fenced code blocks whose info string names a supported
+/// diagram language (<c>mermaid</c>, <c>d2</c>, <c>graphviz</c>/<c>dot</c>,
+/// <c>plantuml</c>/<c>puml</c>), turning them into cacheable <see cref="DiagramRequest"/>s.
 /// </summary>
 public static class DiagramExtractor
 {
@@ -32,6 +33,8 @@ public static class DiagramExtractor
         {
             "mermaid" => DiagramKind.Mermaid,
             "d2" => DiagramKind.D2,
+            "graphviz" or "dot" => DiagramKind.Graphviz,
+            "plantuml" or "puml" or "uml" => DiagramKind.PlantUml,
             _ => null,
         };
     }

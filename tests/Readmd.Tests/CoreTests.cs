@@ -32,6 +32,80 @@ public class CoreTests
         var doc = new MarkdownRenderer().Parse("doc.md", md);
         Assert.Contains(doc.Diagrams, d => d.Kind == DiagramKind.Mermaid);
     }
+
+    [Theory]
+    [InlineData("d2", DiagramKind.D2)]
+    [InlineData("graphviz", DiagramKind.Graphviz)]
+    [InlineData("dot", DiagramKind.Graphviz)]
+    [InlineData("plantuml", DiagramKind.PlantUml)]
+    [InlineData("puml", DiagramKind.PlantUml)]
+    public void Fenced_languages_map_to_diagram_kinds(string lang, DiagramKind expected)
+    {
+        Assert.Equal(expected, DiagramExtractor.MapKind(lang));
+    }
+
+    [Fact]
+    public void Graphviz_and_plantuml_blocks_are_collected_as_diagrams()
+    {
+        var md = "```dot\ndigraph { a -> b }\n```\n\n```plantuml\n@startuml\nA -> B\n@enduml\n```\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Contains(doc.Diagrams, d => d.Kind == DiagramKind.Graphviz);
+        Assert.Contains(doc.Diagrams, d => d.Kind == DiagramKind.PlantUml);
+    }
+
+    [Fact]
+    public void Plain_code_block_is_not_a_diagram()
+    {
+        Assert.Null(DiagramExtractor.MapKind("csharp"));
+        Assert.Null(DiagramExtractor.MapKind(""));
+        Assert.Null(DiagramExtractor.MapKind(null));
+    }
+
+    [Fact]
+    public void Front_matter_title_overrides_first_heading()
+    {
+        var md = "---\ntitle: From Front Matter\n---\n\n# A Different Heading\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Equal("From Front Matter", doc.Title);
+    }
+
+    [Fact]
+    public void Front_matter_is_parsed_into_scalars_and_lists()
+    {
+        var md = "---\ntitle: Report\nauthor: Jane Smith\ntags: [a, b, c]\n---\n\n# Body\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Equal("Report", doc.FrontMatter.Get("title"));
+        Assert.Equal("Jane Smith", doc.FrontMatter.Get("author"));
+        Assert.Equal(new[] { "a", "b", "c" }, doc.FrontMatter.GetList("tags"));
+    }
+
+    [Fact]
+    public void Front_matter_metadata_header_is_emitted_in_html()
+    {
+        var md = "---\ntitle: Report\nauthor: Jane\n---\n\n# Body\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Contains("readmd-frontmatter", doc.Html);
+        Assert.Contains("Jane", doc.Html);
+    }
+
+    [Fact]
+    public void Document_without_front_matter_has_empty_front_matter_and_no_header()
+    {
+        var md = "# Title\n\nBody.\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.True(doc.FrontMatter.IsEmpty);
+        Assert.DoesNotContain("readmd-frontmatter", doc.Html);
+    }
+
+    [Theory]
+    [InlineData("key: \"quoted value\"", "key", "quoted value")]
+    [InlineData("key: 'single quoted'", "key", "single quoted")]
+    [InlineData("url: https://example.com:8080/x", "url", "https://example.com:8080/x")]
+    public void Front_matter_parses_scalars(string line, string key, string expected)
+    {
+        var fm = FrontMatter.Parse(line);
+        Assert.Equal(expected, fm.Get(key));
+    }
 }
 
 public class LinkResolverTests

@@ -24,13 +24,13 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore Mdv.slnx
+        run: dotnet restore Readmd.slnx
 
       - name: Build
-        run: dotnet build Mdv.slnx --configuration Release --no-restore
+        run: dotnet build Readmd.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test tests/Mdv.Tests/Mdv.Tests.csproj --configuration Release --no-build --verbosity normal
+        run: dotnet test tests/Readmd.Tests/Readmd.Tests.csproj --configuration Release --no-build --verbosity normal
 
   pack:
     name: Pack tool
@@ -45,10 +45,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Pack
-        run: dotnet pack src/Mdv.Cli/Mdv.Cli.csproj --configuration Release -o artifacts/nupkg
+        run: dotnet pack src/Readmd.Cli/Readmd.Cli.csproj --configuration Release -o artifacts/nupkg
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mdv-nupkg
+          name: readmd-nupkg
           path: artifacts/nupkg/*.nupkg

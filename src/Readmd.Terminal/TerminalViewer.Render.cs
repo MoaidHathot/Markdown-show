@@ -363,12 +363,14 @@ public sealed partial class TerminalViewer
     // browser instead of resizing. Scaled bitmaps are cached per (key, theme, width).
     private readonly Dictionary<string, SKBitmap> _scaledDiagramCache = new();
     private readonly Dictionary<string, string> _sixelCache = new();
+    private readonly Dictionary<string, IReadOnlyList<string>> _halfBlockCache = new();
 
     private void ClearDiagramCaches()
     {
         foreach (var bmp in _scaledDiagramCache.Values) bmp.Dispose();
         _scaledDiagramCache.Clear();
         _sixelCache.Clear();
+        _halfBlockCache.Clear();
     }
 
     private SKBitmap GetScaledDiagram(string key, DiagramResult result)
@@ -454,6 +456,8 @@ public sealed partial class TerminalViewer
 
     private void DrawDiagrams(int height)
     {
+        if (_graphicsMode == GraphicsMode.None) return; // captions only; nothing to draw
+
         foreach (var (key, result) in _diagramResults)
         {
             if (result.Status != DiagramStatus.Ready || result.Png is null) continue;
@@ -480,6 +484,12 @@ public sealed partial class TerminalViewer
                 int srcH = Math.Clamp(visibleRows * _cellHeightPx, 1, scaled.Height - srcY);
                 if (srcH < 1) continue;
 
+                if (_graphicsMode == GraphicsMode.HalfBlock)
+                {
+                    DrawHalfBlockSlice(key, scaled, srcY, srcH, drawRow, topCropRows);
+                    continue;
+                }
+
                 var cacheKey = $"{key}-{(_theme.IsDark ? "d" : "l")}-{_screen.Width}-{srcY}-{srcH}";
                 if (!_sixelCache.TryGetValue(cacheKey, out var sixel))
                 {
@@ -491,6 +501,45 @@ public sealed partial class TerminalViewer
                 _screen.WriteEscape(sixel);
             }
         }
+    }
+
+    /// <summary>
+    /// Draws a vertical slice of a scaled diagram as half-block text. Each terminal row maps to one
+    /// cell height of pixels; the slice is rendered to two-pixels-per-row half-block lines and the
+    /// visible rows are placed starting at <paramref name="drawRow"/>.
+    /// </summary>
+    private void DrawHalfBlockSlice(string key, SKBitmap scaled, int srcY, int srcH, int drawRow, int topCropRows)
+    {
+        var cacheKey = $"{key}-{(_theme.IsDark ? "d" : "l")}-{_screen.Width}-{_cellHeightPx}-{_diagramZoom}-hb";
+        if (!_halfBlockCache.TryGetValue(cacheKey, out var rowLines))
+        {
+            rowLines = BuildHalfBlockRows(scaled);
+            _halfBlockCache[cacheKey] = rowLines;
+        }
+
+        int visibleRows = (srcH + _cellHeightPx - 1) / _cellHeightPx;
+        for (int r = 0; r < visibleRows; r++)
+        {
+            int rowIndex = topCropRows + r;
+            if (rowIndex < 0 || rowIndex >= rowLines.Count) continue;
+            _screen.MoveTo(drawRow + r, 1);
+            _screen.WriteEscape(rowLines[rowIndex]);
+        }
+    }
+
+    /// <summary>
+    /// Builds one half-block text line per terminal row for a scaled diagram. The bitmap is
+    /// re-sampled to two pixel rows per terminal row so each ▀ cell shows the right vertical detail.
+    /// </summary>
+    private IReadOnlyList<string> BuildHalfBlockRows(SKBitmap scaled)
+    {
+        int rows = Math.Max(1, scaled.Height / _cellHeightPx);
+        int targetH = rows * 2;                 // two pixel rows per terminal row
+        int targetW = Math.Max(1, scaled.Width * targetH / Math.Max(1, scaled.Height));
+        targetW = Math.Min(targetW, Math.Max(1, _screen.Width - 1));
+
+        using var resized = scaled.Resize(new SKImageInfo(targetW, targetH), SKSamplingOptions.Default) ?? scaled;
+        return HalfBlockEncoder.Encode(resized, _theme.Background);
     }
 
     /// <summary>

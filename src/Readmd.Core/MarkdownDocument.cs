@@ -7,6 +7,8 @@ public enum DiagramKind
 {
     Mermaid,
     D2,
+    Graphviz,
+    PlantUml,
 }
 
 /// <summary>
@@ -36,4 +38,8 @@ public sealed record MarkdownDocument(
     string Html,
     IReadOnlyList<TocEntry> Toc,
     IReadOnlyList<DiagramRequest> Diagrams,
-    string RawMarkdown);
+    string RawMarkdown)
+{
+    /// <summary>Parsed YAML front matter (empty when the document has none).</summary>
+    public FrontMatter FrontMatter { get; init; } = FrontMatter.Empty;
+}

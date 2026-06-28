@@ -10,58 +10,11 @@ const statusText = document.getElementById("readmd-status-text");
 
 let currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
 
-// A richer, more colorful mermaid theme (mermaid.live-ish) using the `base` theme + variables.
+// Mermaid theme variables are injected by the server (window.__READMD_MERMAID__) from the same
+// C# source the terminal Playwright render uses, so both front-ends share one palette.
 function mermaidConfig(theme) {
-  const dark = theme === "dark";
-  const vars = dark
-    ? {
-        darkMode: true, background: "#0d1117",
-        primaryColor: "#1f2740", primaryTextColor: "#e6edf3", primaryBorderColor: "#7c8cf8",
-        lineColor: "#8b9bf4", secondaryColor: "#2a2150", tertiaryColor: "#13202f",
-        nodeBorder: "#7c8cf8", clusterBkg: "#161b2e", clusterBorder: "#3a4668",
-        titleColor: "#c9d4ff", edgeLabelBackground: "#0d1117",
-        actorBkg: "#1f2740", actorBorder: "#7c8cf8", actorTextColor: "#e6edf3",
-        signalColor: "#a9b6f6", signalTextColor: "#cdd6f4", labelBoxBkgColor: "#1f2740",
-        noteBkgColor: "#2a2150", noteTextColor: "#e6edf3", noteBorderColor: "#7c8cf8",
-        sectionBkgColor: "#161b2e", altSectionBkgColor: "#1b2236", sectionBkgColor2: "#13202f",
-        gridColor: "#6b78c0", todayLineColor: "#f08c8c",
-        taskBkgColor: "#283255", taskTextColor: "#e6edf3", taskTextLightColor: "#e6edf3",
-        taskTextOutsideColor: "#e6edf3", taskTextDarkColor: "#0d1117", taskBorderColor: "#7c8cf8",
-        activeTaskBkgColor: "#3b4a9e", activeTaskBorderColor: "#a9b6f6",
-        doneTaskBkgColor: "#2a3350", doneTaskBorderColor: "#5c6aa8",
-        critBkgColor: "#5a2740", critBorderColor: "#f08cb0", doneTaskBkgColor2: "#2a3350",
-        textColor: "#e6edf3",
-        pieTitleTextColor: "#e6edf3", pieSectionTextColor: "#e6edf3", pieLegendTextColor: "#e6edf3",
-        pieStrokeColor: "#0d1117", pieOuterStrokeColor: "#3a4668",
-        pie1: "#5b6cd6", pie2: "#9a6cf0", pie3: "#4aa3d6", pie4: "#56b06a",
-        pie5: "#e0a458", pie6: "#d6678c", pie7: "#7c8cf8", pie8: "#a371f7",
-        attributeBackgroundColorOdd: "#161b2e", attributeBackgroundColorEven: "#1b2236",
-        fontFamily: '"Segoe UI", system-ui, sans-serif',
-      }
-    : {
-        darkMode: false, background: "#ffffff",
-        primaryColor: "#eef1ff", primaryTextColor: "#1f2330", primaryBorderColor: "#6b7cff",
-        lineColor: "#6b7cff", secondaryColor: "#f3edff", tertiaryColor: "#f6f8fa",
-        nodeBorder: "#6b7cff", clusterBkg: "#f4f6ff", clusterBorder: "#c2ccff",
-        titleColor: "#3b4a9e", edgeLabelBackground: "#ffffff",
-        actorBkg: "#eef1ff", actorBorder: "#6b7cff", actorTextColor: "#1f2330",
-        signalColor: "#5562d6", signalTextColor: "#1f2330", labelBoxBkgColor: "#eef1ff",
-        noteBkgColor: "#f3edff", noteTextColor: "#1f2330", noteBorderColor: "#6b7cff",
-        sectionBkgColor: "#eef1ff", altSectionBkgColor: "#f6f8fa", sectionBkgColor2: "#e6ebff",
-        gridColor: "#c2ccff", todayLineColor: "#d6336c",
-        taskBkgColor: "#dfe4ff", taskTextColor: "#1f2330", taskTextLightColor: "#1f2330",
-        taskTextOutsideColor: "#1f2330", taskTextDarkColor: "#1f2330", taskBorderColor: "#6b7cff",
-        activeTaskBkgColor: "#9fb0ff", activeTaskBorderColor: "#5562d6",
-        doneTaskBkgColor: "#d4dbff", doneTaskBorderColor: "#9aa6e0",
-        critBkgColor: "#ffd6e2", critBorderColor: "#d6336c", doneTaskBkgColor2: "#d4dbff",
-        textColor: "#1f2330",
-        pieTitleTextColor: "#1f2330", pieSectionTextColor: "#1f2330", pieLegendTextColor: "#1f2330",
-        pieStrokeColor: "#ffffff", pieOuterStrokeColor: "#c2ccff",
-        pie1: "#6b7cff", pie2: "#8250df", pie3: "#0969da", pie4: "#1a7f37",
-        pie5: "#bf8700", pie6: "#cf222e", pie7: "#6b7cff", pie8: "#8250df",
-        attributeBackgroundColorOdd: "#eef1ff", attributeBackgroundColorEven: "#f6f8fa",
-        fontFamily: '"Segoe UI", system-ui, sans-serif',
-      };
+  const themes = window.__READMD_MERMAID__ || {};
+  const vars = themes[theme === "dark" ? "dark" : "light"] || {};
   return {
     startOnLoad: false,
     theme: "base",
@@ -101,7 +54,7 @@ async function renderD2(root) {
     const key = slot.getAttribute("data-readmd-key");
     slot.setAttribute("data-readmd-done", "1");
     try {
-      const resp = await fetch(`/_mdv/diagram/${key}?theme=${currentTheme}&format=svg`);
+      const resp = await fetch(`/_readmd/diagram/${key}?theme=${currentTheme}&format=svg`);
       if (!resp.ok) throw new Error(await resp.text());
       slot.innerHTML = await resp.text();
     } catch (e) {
@@ -271,7 +224,7 @@ document.getElementById("readmd-search-prev").addEventListener("click", () => ne
 async function navigate(path, push = true) {
   showStatus("Loading…");
   try {
-    const resp = await fetch(`/_mdv/doc?path=${encodeURIComponent(path)}`);
+    const resp = await fetch(`/_readmd/doc?path=${encodeURIComponent(path)}`);
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
     morphContent(data.html);
@@ -311,12 +264,12 @@ window.addEventListener("popstate", (e) => {
 // ---------------- live reload via SSE ----------------
 let currentPath = new URLSearchParams(location.search).get("path") || "";
 function connectLiveReload() {
-  const es = new EventSource("/_mdv/events");
+  const es = new EventSource("/_readmd/events");
   es.addEventListener("reload", async (ev) => {
     try {
       const payload = JSON.parse(ev.data);
       if (payload.path && currentPath && normalize(payload.path) !== normalize(currentPath)) return;
-      const resp = await fetch(`/_mdv/doc?path=${encodeURIComponent(currentPath || payload.path)}`);
+      const resp = await fetch(`/_readmd/doc?path=${encodeURIComponent(currentPath || payload.path)}`);
       if (!resp.ok) return;
       const data = await resp.json();
       morphContent(data.html);
@@ -351,7 +304,7 @@ document.getElementById("readmd-theme-toggle").addEventListener("click", async (
   currentTheme = currentTheme === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", currentTheme);
   document.getElementById("hljs-theme").href = currentTheme === "dark"
-    ? "/_mdv/vendor/github-dark.min.css" : "/_mdv/vendor/github.min.css";
+    ? "/_readmd/vendor/github-dark.min.css" : "/_readmd/vendor/github.min.css";
   if (mermaid && mermaid.initialize) {
     mermaid.initialize(mermaidConfig(currentTheme));
   }

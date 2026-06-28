@@ -309,39 +309,44 @@ public sealed partial class TerminalViewer
             return;
         }
 
-        // Plain character keys.
+        // Plain character keys. The 'g' prefix and digit link-following keep fixed bindings; the
+        // common actions are resolved through the (optionally user-configured) key map.
         switch (ch)
         {
-            case 'q': _running = false; break;
-            case 'j': ScrollBy(1); break;
-            case 'k': ScrollBy(-1); break;
-            case ' ': ScrollBy(ViewportHeight - 2); break;
-            case 'b': ScrollBy(-(ViewportHeight - 2)); break;
-            case 'g' when shift: ScrollTo(_lines.Count); break; // G -> bottom
+            case 'g' when shift: ScrollTo(_lines.Count); return; // G -> bottom
             case 'g': // g -> arm 'gg' prefix
                 _pendingGPrefix = true;
                 _pendingGUntil = DateTime.UtcNow.AddMilliseconds(700);
-                break;
-            case '/': EnterSearch(); break;
-            case 'n': if (shift) JumpSearch(-1); else JumpSearch(1); break;
-            case 't': OpenToc(); break;
-            case 'o': OpenInBrowser(); break;
-            case 'm': ToggleSelectionMode(); break;
-            case 'r': Rerender(); break;
-            case '[': ToggleTheme(); break;
-            case ']': ToggleSolidBackground(); break;
-            case '?': _helpMode = true; _dirty = true; break;
-            case '1': FollowLinkByOrdinal(1); break;
-            case '2': FollowLinkByOrdinal(2); break;
-            case '3': FollowLinkByOrdinal(3); break;
-            case '4': FollowLinkByOrdinal(4); break;
-            case '5': FollowLinkByOrdinal(5); break;
-            case '6': FollowLinkByOrdinal(6); break;
-            case '7': FollowLinkByOrdinal(7); break;
-            case '8': FollowLinkByOrdinal(8); break;
-            case '9': FollowLinkByOrdinal(9); break;
-            default:
-                break;
+                return;
+            case 'n' when shift: JumpSearch(-1); return; // N -> previous match (Shift+n)
+            case >= '1' and <= '9': FollowLinkByOrdinal(ch - '0'); return;
+        }
+
+        if (RunMappedAction(_keyMap.Resolve(ch))) return;
+    }
+
+    // Dispatches a remappable editor action. Returns true if the action was handled.
+    private bool RunMappedAction(EditorAction action)
+    {
+        switch (action)
+        {
+            case EditorAction.Quit: _running = false; return true;
+            case EditorAction.ScrollDown: ScrollBy(1); return true;
+            case EditorAction.ScrollUp: ScrollBy(-1); return true;
+            case EditorAction.PageDown: ScrollBy(ViewportHeight - 2); return true;
+            case EditorAction.PageUp: ScrollBy(-(ViewportHeight - 2)); return true;
+            case EditorAction.GoBottom: ScrollTo(_lines.Count); return true;
+            case EditorAction.Search: EnterSearch(); return true;
+            case EditorAction.SearchNext: JumpSearch(1); return true;
+            case EditorAction.SearchPrev: JumpSearch(-1); return true;
+            case EditorAction.Toc: OpenToc(); return true;
+            case EditorAction.OpenInBrowser: OpenInBrowser(); return true;
+            case EditorAction.ToggleSelectionMode: ToggleSelectionMode(); return true;
+            case EditorAction.Rerender: Rerender(); return true;
+            case EditorAction.ToggleTheme: ToggleTheme(); return true;
+            case EditorAction.ToggleBackground: ToggleSolidBackground(); return true;
+            case EditorAction.Help: _helpMode = true; _dirty = true; return true;
+            default: return false;
         }
     }
 

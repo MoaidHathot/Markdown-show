@@ -80,4 +80,39 @@ public sealed class TerminalTheme
     };
 
     public static TerminalTheme For(bool dark) => dark ? Dark : Light;
+
+    /// <summary>
+    /// Builds a theme from a config <see cref="Readmd.Core.ColorTheme"/>, filling any unset color
+    /// from the built-in dark/light base (selected by <c>ColorTheme.Dark</c>).
+    /// </summary>
+    public static TerminalTheme FromColorTheme(Readmd.Core.ColorTheme ct)
+    {
+        var b = ct.Dark ? Dark : Light;
+        Rgb Pick(string? hex, Rgb fallback)
+        {
+            if (string.IsNullOrWhiteSpace(hex)) return fallback;
+            try { return Rgb.FromHex(hex); } catch { return fallback; }
+        }
+        return new TerminalTheme
+        {
+            IsDark = ct.Dark,
+            Text = Pick(ct.Text, b.Text),
+            Muted = Pick(ct.Muted, b.Muted),
+            Heading = Pick(ct.Heading, b.Heading),
+            Link = Pick(ct.Link, b.Link),
+            Code = Pick(ct.Code, b.Code),
+            Quote = Pick(ct.Muted, b.Quote),
+            Accent = Pick(ct.Accent, b.Accent),
+            Rule = Pick(ct.Rule, b.Rule),
+            SearchBg = b.SearchBg,
+            SearchActiveBg = b.SearchActiveBg,
+            Background = Pick(ct.Background, b.Background),
+            BackgroundElevated = Pick(ct.BackgroundElevated, b.BackgroundElevated),
+            CodeBackground = b.CodeBackground,
+            CodeBorder = b.CodeBorder,
+            H1 = Pick(ct.H1, b.H1),
+            H2 = Pick(ct.H2, b.H2),
+            H3 = Pick(ct.H3, b.H3),
+        };
+    }
 }

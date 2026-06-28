@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.CommandLine.Invocation;
 using System.Diagnostics;
 using System.Reflection;
 using Readmd.Core;
@@ -28,21 +29,26 @@ var bestEffortOption = new Option<bool>("--best-effort")
 {
     Description = "Terminal mode: skip the headless-browser download; mermaid diagrams open in the browser instead.",
 };
-var themeOption = new Option<string>("--theme")
+var themeOption = new Option<string?>("--theme")
 {
-    Description = "Color theme: dark, light, or auto.",
-    DefaultValueFactory = _ => "auto",
+    Description = "Color theme: dark, light, auto, or a custom theme name from your config (default: auto).",
 };
-themeOption.AcceptOnlyFromAmong("dark", "light", "auto");
-var backgroundOption = new Option<string>("--background", ["--bg"])
+var backgroundOption = new Option<string?>("--background", ["--bg"])
 {
     Description = "Background fill: 'solid' paints a solid themed background (overrides terminal transparency); 'terminal' lets the terminal background show through.",
-    DefaultValueFactory = _ => "terminal",
 };
 backgroundOption.AcceptOnlyFromAmong("solid", "terminal", "opaque", "on", "off");
 var d2PathOption = new Option<string?>("--d2-path")
 {
     Description = "Explicit path to the d2 executable (defaults to 'd2' on PATH).",
+};
+var exportOption = new Option<string?>("--export", ["-e", "-o"])
+{
+    Description = "Export to a self-contained file and exit. The format is chosen from the extension: .html (default) or .pdf.",
+};
+var printOption = new Option<bool>("--print")
+{
+    Description = "Render to stdout and exit (plain text, or ANSI when stdout is a terminal). Implied when stdout is redirected to a pipe or file.",
 };
 
 var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
@@ -59,51 +65,130 @@ var root = new RootCommand("readmd — a terminal-first Markdown viewer with liv
     themeOption,
     backgroundOption,
     d2PathOption,
+    exportOption,
+    printOption,
 };
+
+// Replace the built-in --version (which prints the bare version) with a branded one that
+// prints "readmd <version>" consistently, in any argument position.
+for (var i = root.Options.Count - 1; i >= 0; i--)
+{
+    if (root.Options[i] is VersionOption)
+        root.Options.RemoveAt(i);
+}
+root.Options.Add(new VersionOption("--version", ["-v"]) { Action = new PrintVersionAction(version) });
+
+// `readmd completions <shell>` — print a shell completion script (bash/zsh/pwsh/fish).
+var shellArgument = new Argument<string>("shell") { Description = "Shell to generate completions for: bash, zsh, pwsh, or fish." };
+var completionsCommand = new Command("completions", "Print a shell completion script to stdout.") { shellArgument };
+completionsCommand.SetAction(parse =>
+{
+    var shell = parse.GetValue(shellArgument)!;
+    try { Console.Out.Write(ShellIntegration.ForShell(shell)); return 0; }
+    catch (ArgumentException ex) { Console.Error.WriteLine($"readmd: {ex.Message}"); return 2; }
+});
+root.Subcommands.Add(completionsCommand);
+
+// `readmd man` — print a troff man page to stdout (pipe to a file under man1/).
+var manCommand = new Command("man", "Print a man page (troff) to stdout.");
+manCommand.SetAction(_ => { Console.Out.Write(ShellIntegration.ManPage(version)); return 0; });
+root.Subcommands.Add(manCommand);
 
 root.SetAction(async (parse, ct) =>
 {
     var file = parse.GetValue(fileArgument)!;
-    var full = Path.GetFullPath(file);
-    if (!File.Exists(full))
-    {
-        Console.Error.WriteLine($"readmd: file not found: {file}");
-        return 2;
-    }
-
     var browser = parse.GetValue(browserOption);
     var port = parse.GetValue(portOption);
     var noOpen = parse.GetValue(noOpenOption);
     var bestEffort = parse.GetValue(bestEffortOption);
-    var themeStr = parse.GetValue(themeOption) ?? "auto";
-    var backgroundStr = parse.GetValue(backgroundOption) ?? "terminal";
-    var d2Path = parse.GetValue(d2PathOption);
+    var themeArg = parse.GetValue(themeOption);
+    var backgroundArg = parse.GetValue(backgroundOption);
+    var d2PathArg = parse.GetValue(d2PathOption);
+    var exportPath = parse.GetValue(exportOption);
+    var print = parse.GetValue(printOption);
+
+    var fromStdin = file == "-";
+    string full;
+    if (fromStdin)
+    {
+        full = "-";
+    }
+    else
+    {
+        full = Path.GetFullPath(file);
+        if (!File.Exists(full))
+        {
+            Console.Error.WriteLine($"readmd: file not found: {file}");
+            return 2;
+        }
+    }
+
+    // Config: user-level + project-level (.readmd.json) merged; CLI flags take precedence over it.
+    var config = ConfigLoader.Load(fromStdin ? null : full);
+    var themeStr = themeArg ?? config.Theme ?? "auto";
+    var backgroundStr = backgroundArg ?? config.Background ?? "terminal";
+    var d2Path = d2PathArg ?? config.D2Path;
 
     if (port is < 0 or > 65535)
     {
         Console.Error.WriteLine($"readmd: --port must be between 0 and 65535 (got {port}).");
         return 2;
     }
+    if (backgroundStr.Trim().ToLowerInvariant() is not ("solid" or "terminal" or "opaque" or "on" or "off"))
+    {
+        Console.Error.WriteLine($"readmd: --background must be 'solid' or 'terminal' (got '{backgroundStr}').");
+        return 2;
+    }
     if (browser && (bestEffort || backgroundStr is "solid" or "opaque" or "on"))
         Console.Error.WriteLine("readmd: note — --best-effort and --background only affect terminal mode and are ignored with --browser.");
 
-    var dark = ResolveDark(themeStr);
+    // Resolve the theme: a custom config theme name, or built-in dark/light/auto.
+    Readmd.Terminal.TerminalTheme? customTheme = null;
+    bool dark;
+    if (config.Themes is not null && config.Themes.TryGetValue(themeStr, out var colorTheme))
+    {
+        customTheme = Readmd.Terminal.TerminalTheme.FromColorTheme(colorTheme);
+        dark = colorTheme.Dark;
+    }
+    else
+    {
+        if (themeStr is not ("dark" or "light" or "auto") && themeArg is not null)
+            Console.Error.WriteLine($"readmd: note — unknown theme '{themeStr}', using auto.");
+        dark = ResolveDark(themeStr);
+    }
     var solidBackground = backgroundStr.Trim().ToLowerInvariant() is "solid" or "opaque" or "on";
     var diagramTheme = dark ? DiagramTheme.Dark : DiagramTheme.Light;
+    var keyMap = Readmd.Terminal.KeyMap.FromConfig(config.Keys);
+    var graphicsMode = Readmd.Terminal.TerminalCapabilities.Resolve(config.Graphics);
 
     var diagrams = new DiagramRenderer(new DiagramRendererOptions
     {
         BestEffort = bestEffort,
         D2Path = d2Path,
+        MermaidCliPath = config.MermaidCliPath,
+        GraphvizPath = config.GraphvizPath,
+        PlantUmlPath = config.PlantUmlPath,
     });
+
+    // Non-interactive modes: stdin always prints; a redirected stdout implies --print.
+    var stdoutRedirected = Console.IsOutputRedirected;
+    var shouldPrint = print || (fromStdin && exportPath is null) || (stdoutRedirected && exportPath is null && !browser);
 
     try
     {
+        if (exportPath is not null)
+        {
+            return await RunExportAsync(full, fromStdin, exportPath, diagramTheme, diagrams, ct);
+        }
+        if (shouldPrint)
+        {
+            return await RunPrintAsync(full, fromStdin, dark, ct);
+        }
         if (browser)
         {
             return await RunBrowserAsync(full, port, noOpen, diagramTheme, diagrams, ct);
         }
-        return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, ct);
+        return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, customTheme, keyMap, graphicsMode, ct);
     }
     catch (OperationCanceledException)
     {
@@ -131,13 +216,6 @@ root.SetAction(async (parse, ct) =>
     }
 });
 
-// --version: print the tool version and exit before any subcommand action runs.
-if (args.Length == 1 && args[0] is "--version" or "-v")
-{
-    Console.WriteLine($"readmd {version}");
-    return 0;
-}
-
 return await root.Parse(args).InvokeAsync();
 
 static bool ResolveDark(string theme) => theme.ToLowerInvariant() switch
@@ -160,6 +238,72 @@ static bool DetectDark()
     }
     // Apple Terminal/light hints are unreliable; default to dark (most terminals are dark).
     return true;
+}
+
+// Reads the document text from a file path or, when path is "-", from standard input.
+static async Task<string> ReadInputAsync(string fullPathOrDash, bool fromStdin, CancellationToken ct)
+{
+    if (fromStdin)
+    {
+        using var stdin = Console.OpenStandardInput();
+        using var reader = new StreamReader(stdin);
+        return await reader.ReadToEndAsync(ct);
+    }
+    return await File.ReadAllTextAsync(fullPathOrDash, ct);
+}
+
+// --export: write a self-contained .html or .pdf and exit.
+static async Task<int> RunExportAsync(string full, bool fromStdin, string exportPath, DiagramTheme theme, IDiagramRenderer diagrams, CancellationToken ct)
+{
+    var outFull = Path.GetFullPath(exportPath);
+    var isPdf = Path.GetExtension(outFull).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    // HtmlExporter works from a file on disk (for image sandboxing); stage stdin to a temp file.
+    string sourcePath = full;
+    string? temp = null;
+    if (fromStdin)
+    {
+        var text = await ReadInputAsync(full, fromStdin: true, ct);
+        temp = Path.Combine(Path.GetTempPath(), $"readmd-stdin-{Guid.NewGuid():N}.md");
+        await File.WriteAllTextAsync(temp, text, ct);
+        sourcePath = temp;
+    }
+
+    try
+    {
+        var html = await HtmlExporter.ExportAsync(sourcePath, diagrams, theme, ct);
+        if (isPdf)
+        {
+            var pdf = await PdfRenderer.RenderAsync(html, ct);
+            await File.WriteAllBytesAsync(outFull, pdf, ct);
+        }
+        else
+        {
+            await File.WriteAllTextAsync(outFull, html, ct);
+        }
+        Console.Error.WriteLine($"readmd: wrote {outFull}");
+        return 0;
+    }
+    finally
+    {
+        if (temp is not null) { try { File.Delete(temp); } catch { /* ignore */ } }
+    }
+}
+
+// --print / non-TTY: render to stdout (ANSI when stdout is a terminal, plain text otherwise).
+static async Task<int> RunPrintAsync(string full, bool fromStdin, bool dark, CancellationToken ct)
+{
+    var markdown = await ReadInputAsync(full, fromStdin, ct);
+    var color = !Console.IsOutputRedirected;
+    var width = color && Console.WindowWidth > 0 ? Console.WindowWidth : 100;
+    var text = DocumentTextRenderer.Render(markdown, dark, width, color);
+    // Write UTF-8 bytes straight to the raw stdout stream so box-drawing/Unicode survives a
+    // redirected pipe or file regardless of the console's default code page.
+    var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+    await using var stdout = Console.OpenStandardOutput();
+    await stdout.WriteAsync(bytes, ct);
+    await stdout.FlushAsync(ct);
+    return 0;
 }
 
 static async Task<int> RunBrowserAsync(string file, int port, bool noOpen, DiagramTheme theme, IDiagramRenderer diagrams, CancellationToken ct)
@@ -185,7 +329,7 @@ static async Task<int> RunBrowserAsync(string file, int port, bool noOpen, Diagr
     return 0;
 }
 
-static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme theme, IDiagramRenderer diagrams, int port, bool solidBackground, CancellationToken ct)
+static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme theme, IDiagramRenderer diagrams, int port, bool solidBackground, Readmd.Terminal.TerminalTheme? customTheme, Readmd.Terminal.KeyMap keyMap, Readmd.Terminal.GraphicsMode graphicsMode, CancellationToken ct)
 {
     // One-off browser server spun up by the viewer's 'o' action; tracked so we can dispose it.
     WebViewerServer? sideServer = null;
@@ -195,6 +339,9 @@ static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme the
         DarkTerminal = dark,
         DiagramTheme = theme,
         SolidBackground = solidBackground,
+        Theme = customTheme,
+        KeyMap = keyMap,
+        GraphicsMode = graphicsMode,
         OpenInBrowser = async path =>
         {
             // Reuse a single side server across 'o' presses instead of leaking one each time.
@@ -224,5 +371,15 @@ static void OpenBrowser(string url)
     catch
     {
         Console.WriteLine($"readmd: open {url} in your browser.");
+    }
+}
+
+/// <summary>Prints "readmd &lt;version&gt;" for --version, regardless of argument position.</summary>
+internal sealed class PrintVersionAction(string version) : SynchronousCommandLineAction
+{
+    public override int Invoke(ParseResult parseResult)
+    {
+        parseResult.InvocationConfiguration.Output.WriteLine($"readmd {version}");
+        return 0;
     }
 }

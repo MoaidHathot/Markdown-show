@@ -34,12 +34,24 @@ public sealed class MarkdownRenderer
     {
         var document = Markdown.Parse(markdown, _pipeline);
 
+        var frontMatter = ExtractFrontMatter(document);
         var toc = TocExtractor.Extract(document);
         var diagrams = DiagramExtractor.Extract(document);
-        var title = DeriveTitle(toc, sourcePath);
+        var title = DeriveTitle(frontMatter, toc, sourcePath);
         var html = RenderHtml(document);
+        html = FrontMatterHeader.Prepend(html, frontMatter);
 
-        return new MarkdownDocument(sourcePath, title, html, toc, diagrams, markdown);
+        return new MarkdownDocument(sourcePath, title, html, toc, diagrams, markdown)
+        {
+            FrontMatter = frontMatter,
+        };
+    }
+
+    private static FrontMatter ExtractFrontMatter(Markdig.Syntax.MarkdownDocument document)
+    {
+        if (document.Count > 0 && document[0] is Markdig.Extensions.Yaml.YamlFrontMatterBlock yaml)
+            return FrontMatter.FromBlock(yaml);
+        return FrontMatter.Empty;
     }
 
     private string RenderHtml(MarkdownObject document)
@@ -61,8 +73,11 @@ public sealed class MarkdownRenderer
         return writer.ToString();
     }
 
-    private static string DeriveTitle(IReadOnlyList<TocEntry> toc, string sourcePath)
+    private static string DeriveTitle(FrontMatter frontMatter, IReadOnlyList<TocEntry> toc, string sourcePath)
     {
+        // Front-matter `title:` wins, then the first H1, then any heading, then the file name.
+        if (frontMatter.TryGet("title", out var fmTitle) && !string.IsNullOrWhiteSpace(fmTitle))
+            return fmTitle;
         var firstH1 = toc.FirstOrDefault(t => t.Level == 1);
         if (firstH1 is not null) return firstH1.Title;
         var firstAny = toc.FirstOrDefault();

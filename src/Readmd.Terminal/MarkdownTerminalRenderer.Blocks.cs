@@ -542,7 +542,14 @@ public sealed partial class MarkdownTerminalRenderer
         EnsureBlankBefore();
         // Caption line for the diagram. The rendered image is drawn on the rows below this line;
         // the caption is just a label so it's clear what the image is (and where it begins).
-        var label = kind == DiagramKind.Mermaid ? "Mermaid" : "D2";
+        var label = kind switch
+        {
+            DiagramKind.Mermaid => "Mermaid",
+            DiagramKind.D2 => "D2",
+            DiagramKind.Graphviz => "Graphviz",
+            DiagramKind.PlantUml => "PlantUML",
+            _ => "Diagram",
+        };
         var anchor = new DisplayLine { DiagramKey = request.Key };
         anchor.Spans.Add(new StyledSpan("◆ ", Theme.Accent));
         anchor.Spans.Add(new StyledSpan(label + " diagram", Theme.Muted, CellStyle.Italic));

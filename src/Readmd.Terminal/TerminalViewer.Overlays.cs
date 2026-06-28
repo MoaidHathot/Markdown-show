@@ -501,12 +501,13 @@ public sealed partial class TerminalViewer
     public static string CaptureDocument(bool dark, int width, int height, string markdown, int scroll = 0)
     {
         var v = new TerminalViewer(dark, width, height, []);
+        var doc = new MarkdownRenderer().Parse("capture.md", markdown);
         var pipeline = new MarkdownPipelineBuilder()
             .UseYamlFrontMatter().UseAdvancedExtensions().UseEmojiAndSmiley()
             .UseMathematics().UseGenericAttributes().Build();
-        var doc = Markdown.Parse(markdown, pipeline);
+        var ast = Markdown.Parse(markdown, pipeline);
         var renderer = new MarkdownTerminalRenderer(v._theme, width - 1);
-        var result = renderer.Render(doc, null);
+        var result = renderer.Render(ast, doc.Toc, doc.FrontMatter);
         v._lines = result.Lines;
         v._scroll = Math.Clamp(scroll, 0, Math.Max(0, v._lines.Count - 1));
         v._screen.BeginFrame();
