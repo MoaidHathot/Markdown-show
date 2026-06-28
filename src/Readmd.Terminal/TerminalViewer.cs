@@ -22,6 +22,9 @@ public sealed class TerminalViewerOptions
     /// <summary>Optional key bindings (from config). Defaults to the built-in bindings.</summary>
     public KeyMap? KeyMap { get; init; }
 
+    /// <summary>Inline-graphics mode: how diagrams/images are drawn (Sixel, half-block, or none).</summary>
+    public GraphicsMode GraphicsMode { get; init; } = GraphicsMode.Sixel;
+
     /// <summary>Invoked when the user presses 'o' to open the current file in the browser.</summary>
     public Func<string, Task>? OpenInBrowser { get; init; }
 }
@@ -39,6 +42,7 @@ public sealed partial class TerminalViewer : IAsyncDisposable
     private readonly LinkResolver _resolver;
     private TerminalTheme _theme;
     private KeyMap _keyMap = KeyMap.Default;
+    private GraphicsMode _graphicsMode = GraphicsMode.Sixel;
     private bool _solidBackground;
     private DiagramTheme _diagramTheme;
     private readonly DocumentWatcher _watcher;
@@ -115,6 +119,7 @@ public sealed partial class TerminalViewer : IAsyncDisposable
         _imageLoader = new Readmd.Diagrams.ImageLoader(root);
         _theme = options.Theme ?? TerminalTheme.For(options.DarkTerminal);
         _keyMap = options.KeyMap ?? KeyMap.Default;
+        _graphicsMode = options.GraphicsMode;
         _solidBackground = options.SolidBackground;
         _diagramTheme = options.DiagramTheme;
         _watcher = new DocumentWatcher(_currentPath);

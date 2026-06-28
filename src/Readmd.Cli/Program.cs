@@ -143,6 +143,7 @@ root.SetAction(async (parse, ct) =>
     var solidBackground = backgroundStr.Trim().ToLowerInvariant() is "solid" or "opaque" or "on";
     var diagramTheme = dark ? DiagramTheme.Dark : DiagramTheme.Light;
     var keyMap = Readmd.Terminal.KeyMap.FromConfig(config.Keys);
+    var graphicsMode = Readmd.Terminal.TerminalCapabilities.Resolve(config.Graphics);
 
     var diagrams = new DiagramRenderer(new DiagramRendererOptions
     {
@@ -171,7 +172,7 @@ root.SetAction(async (parse, ct) =>
         {
             return await RunBrowserAsync(full, port, noOpen, diagramTheme, diagrams, ct);
         }
-        return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, customTheme, keyMap, ct);
+        return await RunTerminalAsync(full, dark, diagramTheme, diagrams, port, solidBackground, customTheme, keyMap, graphicsMode, ct);
     }
     catch (OperationCanceledException)
     {
@@ -312,7 +313,7 @@ static async Task<int> RunBrowserAsync(string file, int port, bool noOpen, Diagr
     return 0;
 }
 
-static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme theme, IDiagramRenderer diagrams, int port, bool solidBackground, Readmd.Terminal.TerminalTheme? customTheme, Readmd.Terminal.KeyMap keyMap, CancellationToken ct)
+static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme theme, IDiagramRenderer diagrams, int port, bool solidBackground, Readmd.Terminal.TerminalTheme? customTheme, Readmd.Terminal.KeyMap keyMap, Readmd.Terminal.GraphicsMode graphicsMode, CancellationToken ct)
 {
     // One-off browser server spun up by the viewer's 'o' action; tracked so we can dispose it.
     WebViewerServer? sideServer = null;
@@ -324,6 +325,7 @@ static async Task<int> RunTerminalAsync(string file, bool dark, DiagramTheme the
         SolidBackground = solidBackground,
         Theme = customTheme,
         KeyMap = keyMap,
+        GraphicsMode = graphicsMode,
         OpenInBrowser = async path =>
         {
             // Reuse a single side server across 'o' presses instead of leaking one each time.

@@ -29,6 +29,9 @@ public sealed class ReadmdConfig
     /// <summary>Path to the <c>plantuml</c> launcher (for <c>plantuml</c>/<c>puml</c> code blocks).</summary>
     [JsonPropertyName("plantUmlPath")] public string? PlantUmlPath { get; set; }
 
+    /// <summary>Inline-graphics mode for the terminal: "sixel", "half-block", "none", or "auto".</summary>
+    [JsonPropertyName("graphics")] public string? Graphics { get; set; }
+
     /// <summary>Named custom color themes that can be selected via <see cref="Theme"/>.</summary>
     [JsonPropertyName("themes")] public Dictionary<string, ColorTheme>? Themes { get; set; }
 
@@ -62,6 +65,7 @@ public sealed class ReadmdConfig
             MermaidCliPath = overrides.MermaidCliPath ?? MermaidCliPath,
             GraphvizPath = overrides.GraphvizPath ?? GraphvizPath,
             PlantUmlPath = overrides.PlantUmlPath ?? PlantUmlPath,
+            Graphics = overrides.Graphics ?? Graphics,
             Themes = MergeDict(Themes, overrides.Themes),
             Keys = MergeDict(Keys, overrides.Keys),
         };

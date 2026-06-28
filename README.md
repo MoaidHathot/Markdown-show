@@ -129,6 +129,7 @@ ignored.
   "theme": "nord",            // "dark" | "light" | "auto" | a custom theme name below
   "background": "solid",      // "solid" | "terminal"
   "d2Path": "/usr/local/bin/d2",
+  "graphics": "auto",         // "sixel" | "half-block" | "none" | "auto" (inline image mode)
 
   // Custom terminal color themes (any omitted color falls back to the dark/light base):
   "themes": {
@@ -170,7 +171,7 @@ The Markdig pipeline and diagram cache are shared by both front-ends, so the ter
 
 ## Terminal image support
 
-Inline diagrams in the terminal use the **Sixel** graphics protocol. Supported terminals include Windows Terminal (≥ 1.22), WezTerm, xterm, mintty, foot, and others. In terminals without graphics support, run with `--best-effort` and press `o` to view diagrams in the browser.
+Inline diagrams and images in the terminal use the **Sixel** graphics protocol where available (Windows Terminal ≥ 1.22, WezTerm, xterm, mintty, foot, …). On terminals without Sixel, readmd automatically falls back to **Unicode half-block (▀) rendering**, which works on any truecolor terminal (kitty, iTerm2, the Linux console, tmux, …) — diagrams and images still render inline, just at lower resolution. Force a mode with `READMD_GRAPHICS=sixel|half-block|none` (or `"graphics"` in config); `none` shows only the diagram caption. You can also run with `--best-effort` and press `o` to view diagrams in the browser.
 
 ## Platform support
 
