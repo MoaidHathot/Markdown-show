@@ -341,6 +341,76 @@ document.addEventListener("click", (e) => {
   }
 });
 
+// ---------------- quick-open palette (Ctrl+P) ----------------
+const quickOpen = document.getElementById("readmd-quickopen");
+const quickInput = document.getElementById("readmd-quickopen-input");
+const quickList = document.getElementById("readmd-quickopen-list");
+let fileList = null;        // cached [{path, relative, title}]
+let quickFiltered = [];
+let quickActive = 0;
+let quickLastFocus = null;
+
+async function ensureFileList() {
+  if (fileList) return fileList;
+  try {
+    const resp = await fetch("/_readmd/tree");
+    fileList = resp.ok ? await resp.json() : [];
+  } catch { fileList = []; }
+  return fileList;
+}
+// Subsequence fuzzy match: every char of the query appears in order in the candidate.
+function fuzzyMatch(query, text) {
+  if (!query) return true;
+  const q = query.toLowerCase(), t = text.toLowerCase();
+  let i = 0;
+  for (let j = 0; j < t.length && i < q.length; j++) if (t[j] === q[i]) i++;
+  return i === q.length;
+}
+async function openQuickOpen() {
+  await ensureFileList();
+  quickLastFocus = document.activeElement;
+  quickOpen.classList.remove("readmd-hidden");
+  quickInput.value = "";
+  renderQuickList("");
+  quickInput.focus();
+}
+function closeQuickOpen() {
+  quickOpen.classList.add("readmd-hidden");
+  if (quickLastFocus && quickLastFocus.focus) quickLastFocus.focus();
+  quickLastFocus = null;
+}
+function renderQuickList(query) {
+  quickFiltered = (fileList || []).filter((f) => fuzzyMatch(query, f.relative) || fuzzyMatch(query, f.title)).slice(0, 50);
+  quickActive = 0;
+  quickList.innerHTML = "";
+  quickFiltered.forEach((f, i) => {
+    const li = document.createElement("li");
+    li.className = "readmd-qo-item" + (i === 0 ? " active" : "");
+    li.setAttribute("role", "option");
+    li.innerHTML = `<span class="readmd-qo-title">${escapeHtml(f.title)}</span><span class="readmd-qo-path">${escapeHtml(f.relative)}</span>`;
+    li.addEventListener("click", () => { closeQuickOpen(); navigate(f.path); });
+    quickList.appendChild(li);
+  });
+}
+function quickMove(delta) {
+  if (!quickFiltered.length) return;
+  quickActive = (quickActive + delta + quickFiltered.length) % quickFiltered.length;
+  [...quickList.children].forEach((li, i) => li.classList.toggle("active", i === quickActive));
+  quickList.children[quickActive]?.scrollIntoView({ block: "nearest" });
+}
+quickInput?.addEventListener("input", () => renderQuickList(quickInput.value));
+quickInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeQuickOpen(); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); quickMove(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); quickMove(-1); }
+  else if (e.key === "Enter") {
+    e.preventDefault();
+    const f = quickFiltered[quickActive];
+    if (f) { closeQuickOpen(); navigate(f.path); }
+  }
+});
+quickOpen?.addEventListener("click", (e) => { if (e.target === quickOpen) closeQuickOpen(); });
+
 // ---------------- navigation (multi-file wiki) ----------------
 async function navigate(path, push = true) {
   showStatus("Loading…");
@@ -348,7 +418,7 @@ async function navigate(path, push = true) {
     const resp = await fetch(`/_readmd/doc?path=${encodeURIComponent(path)}`);
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
-    morphContent(data.html);
+    morphContent(data.html, { morph: false });
     document.title = data.title;
     document.getElementById("readmd-doc-title").textContent = data.title;
     if (push) history.pushState({ path }, "", `/?path=${encodeURIComponent(path)}`);
@@ -403,9 +473,19 @@ function connectLiveReload() {
   es.onerror = () => { /* browser auto-reconnects */ };
 }
 
-function morphContent(html) {
-  // Idiomorph diffs the new HTML into the live DOM, preserving scroll position and
-  // untouched nodes (already-rendered diagrams) instead of replacing innerHTML.
+function morphContent(html, { morph = true } = {}) {
+  // Remove enhancement nodes we injected (copy buttons, heading permalinks) first so they don't
+  // confuse the diff / leak into a replace; they're re-added afterwards by afterContentChange.
+  content.querySelectorAll(".readmd-copy-btn, .readmd-anchor").forEach((el) => el.remove());
+  content.querySelectorAll("[data-readmd-copy]").forEach((el) => el.removeAttribute("data-readmd-copy"));
+  if (!morph) {
+    // Navigation to a different file: a clean replace is correct (nothing to preserve) and avoids
+    // idiomorph edge cases when diffing already-rendered diagram subtrees against fresh markup.
+    content.innerHTML = html;
+    return;
+  }
+  // Live reload of the same file: idiomorph diffs the new HTML into the live DOM, preserving scroll
+  // position and untouched nodes (already-rendered diagrams) instead of replacing innerHTML.
   const next = document.createElement("article");
   next.id = "readmd-content";
   next.innerHTML = html;
@@ -652,7 +732,13 @@ function scrollByLines(n) { window.scrollBy({ top: n * 40, behavior: "instant" i
 function pageHeight() { return window.innerHeight - 40; }
 
 document.addEventListener("keydown", (e) => {
-  const typing = document.activeElement === searchInput;
+  const typing = document.activeElement === searchInput || document.activeElement === quickInput;
+
+  // Quick-open palette swallows its own keys (handled on the input); just stop global shortcuts.
+  if (!quickOpen.classList.contains("readmd-hidden")) {
+    if (e.key === "Escape" && document.activeElement !== quickInput) { e.preventDefault(); closeQuickOpen(); }
+    return;
+  }
 
   // Lightbox: Esc closes; +/-/0 zoom while it's open.
   if (!lightbox.classList.contains("readmd-hidden")) {
@@ -668,6 +754,8 @@ document.addEventListener("keydown", (e) => {
 
   // Ctrl+F always focuses search (browser-native find is replaced by ours).
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); searchInput.focus(); searchInput.select(); return; }
+  // Ctrl+P opens the quick-open file palette.
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") { e.preventDefault(); openQuickOpen(); return; }
   if (e.altKey && e.key === "ArrowLeft") { e.preventDefault(); history.back(); return; }
   if (e.altKey && e.key === "ArrowRight") { e.preventDefault(); history.forward(); return; }
 
