@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Readmd.Core;
+using Readmd.Diagrams;
 
 namespace Readmd.Web;
 
@@ -191,6 +192,7 @@ public sealed class WebViewerServer : IAsyncDisposable
         return template
             .Replace("__THEME__", themeName)
             .Replace("__TITLE__", System.Net.WebUtility.HtmlEncode(doc.Title))
+            .Replace("__MERMAID_THEMES__", MermaidTheme.ThemeVariablesByMode())
             .Replace("__BODY__", doc.Html);
     }
 
