@@ -4,6 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>__TITLE__</title>
+  <script>
+    // Apply the saved theme before stylesheets load to avoid a flash of the wrong theme.
+    try {
+      var p = JSON.parse(localStorage.getItem("readmd:prefs") || "{}");
+      if (p && (p.theme === "dark" || p.theme === "light")) {
+        document.documentElement.setAttribute("data-theme", p.theme);
+      }
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="/_readmd/vendor/katex.min.css" />
   <link rel="stylesheet" id="hljs-theme" href="/_readmd/vendor/github-dark.min.css" />
   <link rel="stylesheet" href="/_readmd/app.css" />

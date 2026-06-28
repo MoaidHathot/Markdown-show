@@ -10,6 +10,22 @@ const statusText = document.getElementById("readmd-status-text");
 
 let currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
 
+// ---------------- persisted UI preferences ----------------
+// Theme and chrome toggles persist across reloads/navigations via localStorage (best-effort:
+// private-mode failures are ignored). The server still provides the initial theme, but a saved
+// user preference wins after the first visit.
+const PREFS_KEY = "readmd:prefs";
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") || {}; } catch { return {}; }
+}
+function savePref(key, value) {
+  try {
+    const p = loadPrefs();
+    p[key] = value;
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch { /* storage unavailable */ }
+}
+
 // Mermaid theme variables are injected by the server (window.__READMD_MERMAID__) from the same
 // C# source the terminal Playwright render uses, so both front-ends share one palette.
 function mermaidConfig(theme) {
@@ -346,19 +362,24 @@ async function afterContentChange(resetScroll) {
 }
 
 // ---------------- theme ----------------
-document.getElementById("readmd-theme-toggle").addEventListener("click", async () => {
-  currentTheme = currentTheme === "dark" ? "light" : "dark";
+async function setTheme(theme, { persist = true, rerender = true } = {}) {
+  currentTheme = theme;
   document.documentElement.setAttribute("data-theme", currentTheme);
   document.getElementById("hljs-theme").href = currentTheme === "dark"
     ? "/_readmd/vendor/github-dark.min.css" : "/_readmd/vendor/github.min.css";
   if (mermaid && mermaid.initialize) {
     mermaid.initialize(mermaidConfig(currentTheme));
   }
-  // re-render diagrams for the new theme
-  content.querySelectorAll("figure.readmd-diagram-mermaid[data-readmd-done]").forEach((f) => f.removeAttribute("data-readmd-done"));
-  content.querySelectorAll(".readmd-d2-slot[data-readmd-done]").forEach((s) => { s.removeAttribute("data-readmd-done"); s.innerHTML = '<div class="readmd-diagram-placeholder">Rendering D2 diagram…</div>'; });
-  await renderAll(content);
-});
+  if (persist) savePref("theme", currentTheme);
+  if (rerender) {
+    // re-render diagrams for the new theme
+    content.querySelectorAll("figure.readmd-diagram-mermaid[data-readmd-done]").forEach((f) => f.removeAttribute("data-readmd-done"));
+    content.querySelectorAll(".readmd-d2-slot[data-readmd-done]").forEach((s) => { s.removeAttribute("data-readmd-done"); s.innerHTML = '<div class="readmd-diagram-placeholder">Rendering D2 diagram…</div>'; });
+    await renderAll(content);
+  }
+}
+document.getElementById("readmd-theme-toggle").addEventListener("click", () =>
+  setTheme(currentTheme === "dark" ? "light" : "dark"));
 
 document.getElementById("readmd-back").addEventListener("click", () => history.back());
 document.getElementById("readmd-forward").addEventListener("click", () => history.forward());
@@ -403,18 +424,21 @@ exportMenu?.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.pre
 const layout = document.getElementById("readmd-layout");
 const toolbar = document.getElementById("readmd-toolbar");
 function toggleSidebar() {
-  document.body.classList.toggle("readmd-no-sidebar");
-  flashStatus(document.body.classList.contains("readmd-no-sidebar") ? "Sidebar hidden" : "Sidebar shown");
+  const hidden = document.body.classList.toggle("readmd-no-sidebar");
+  savePref("noSidebar", hidden);
+  flashStatus(hidden ? "Sidebar hidden" : "Sidebar shown");
 }
 function toggleToolbar() {
-  document.body.classList.toggle("readmd-no-toolbar");
-  flashStatus(document.body.classList.contains("readmd-no-toolbar") ? "Toolbar hidden" : "Toolbar shown");
+  const hidden = document.body.classList.toggle("readmd-no-toolbar");
+  savePref("noToolbar", hidden);
+  flashStatus(hidden ? "Toolbar hidden" : "Toolbar shown");
 }
 function toggleZen() {
   const on = !document.body.classList.contains("readmd-zen");
   document.body.classList.toggle("readmd-zen", on);
   document.body.classList.toggle("readmd-no-sidebar", on);
   document.body.classList.toggle("readmd-no-toolbar", on);
+  savePref("zen", on);
   flashStatus(on ? "Zen mode (z to exit)" : "Zen mode off");
 }
 
@@ -576,10 +600,24 @@ function flashStatus(msg) {
 }
 
 // ---------------- boot ----------------
+function applySavedPrefs() {
+  const p = loadPrefs();
+  // Theme: the <head> inline script already set data-theme to avoid a flash; sync the rest here.
+  const docTheme = document.documentElement.getAttribute("data-theme") || "dark";
+  setTheme(docTheme, { persist: false, rerender: false });
+  // Chrome toggles.
+  if (p.zen) {
+    document.body.classList.add("readmd-zen", "readmd-no-sidebar", "readmd-no-toolbar");
+  } else {
+    if (p.noSidebar) document.body.classList.add("readmd-no-sidebar");
+    if (p.noToolbar) document.body.classList.add("readmd-no-toolbar");
+  }
+}
 (async function init() {
   if (!currentPath) {
     currentPath = document.body.getAttribute("data-readmd-initial-path") || "";
   }
+  applySavedPrefs();
   interceptLinks();
   await afterContentChange(false);
   connectLiveReload();
