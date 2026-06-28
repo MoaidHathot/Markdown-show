@@ -105,6 +105,30 @@ html, body {
 }
 #readmd-toolbar button:hover { border-color: var(--accent); }
 
+/* Export dropdown menu. */
+#readmd-export-wrap { position: relative; display: inline-flex; }
+#readmd-export-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  min-width: 200px;
+  display: flex; flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  padding: 4px;
+}
+#readmd-export-menu button {
+  text-align: left;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  width: 100%;
+}
+#readmd-export-menu button:hover, #readmd-export-menu button:focus-visible {
+  background: var(--accent); color: #fff; border-color: transparent;
+}
+
 #readmd-content {
   width: 100%;
   max-width: var(--readmd-max-content);
@@ -132,8 +156,35 @@ html, body {
   border-radius: 8px;
   padding: 14px 16px;
   overflow: auto;
+  position: relative;
 }
 #readmd-content pre code { background: none; padding: 0; font-size: 90%; }
+
+/* Code-block copy button (shown on hover/focus). */
+.readmd-copy-btn {
+  position: absolute; top: 8px; right: 8px;
+  background: var(--bg-elev); color: var(--fg-muted);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 2px 8px; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .12s ease;
+}
+#readmd-content pre:hover .readmd-copy-btn,
+#readmd-content pre:focus-within .readmd-copy-btn,
+.readmd-copy-btn:focus-visible { opacity: 1; }
+.readmd-copy-btn:hover { border-color: var(--accent); color: var(--fg); }
+.readmd-copy-btn.readmd-copied { color: #fff; background: var(--accent); border-color: transparent; }
+
+/* Heading permalink anchors (shown on heading hover). */
+#readmd-content :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: 64px; }
+.readmd-anchor {
+  margin-left: .4em; color: var(--fg-muted);
+  text-decoration: none; font-weight: 400;
+  opacity: 0; transition: opacity .12s ease;
+}
+#readmd-content :is(h1, h2, h3, h4, h5, h6):hover .readmd-anchor,
+.readmd-anchor:focus-visible { opacity: .7; }
+.readmd-anchor:hover { opacity: 1 !important; color: var(--link); text-decoration: none; }
+
 #readmd-content table { border-collapse: collapse; width: 100%; margin: 16px 0; display: block; overflow: auto; }
 #readmd-content th, #readmd-content td { border: 1px solid var(--border); padding: 6px 13px; }
 #readmd-content tr:nth-child(2n) { background: var(--bg-elev); }
@@ -156,6 +207,7 @@ html, body {
 /* Diagrams */
 .readmd-diagram { margin: 20px 0; text-align: center; }
 .readmd-diagram svg { max-width: 100%; height: auto; }
+.readmd-diagram svg, .readmd-d2-slot svg { cursor: zoom-in; }
 .readmd-diagram-placeholder {
   border: 1px dashed var(--border);
   border-radius: 8px;
@@ -323,3 +375,97 @@ body.readmd-zen #readmd-content { max-width: 820px; }
   color: var(--fg-muted);
   background: var(--bg-elev);
 }
+
+/* Diagram lightbox (fullscreen zoom/pan). */
+#readmd-lightbox {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column;
+  background: rgba(0, 0, 0, .82);
+  backdrop-filter: blur(2px);
+}
+#readmd-lightbox.readmd-hidden { display: none; }
+#readmd-lightbox-toolbar {
+  display: flex; gap: 6px; justify-content: center;
+  padding: 10px; flex: 0 0 auto;
+}
+#readmd-lightbox-toolbar button {
+  background: var(--bg-elev); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 6px;
+  min-width: 34px; padding: 5px 10px; cursor: pointer; font-size: 14px;
+}
+#readmd-lightbox-toolbar button:hover { border-color: var(--accent); }
+#readmd-lightbox-stage {
+  flex: 1 1 auto; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; touch-action: none;
+}
+#readmd-lightbox-canvas {
+  transform-origin: center center;
+  will-change: transform;
+}
+#readmd-lightbox-canvas svg {
+  max-width: 90vw; max-height: 80vh;
+  background: #fff; border-radius: 8px;
+}
+
+/* Project-wide search results panel. */
+#readmd-search-results {
+  position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+  z-index: 40; width: min(680px, 92vw);
+  max-height: 60vh; overflow: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .4);
+  padding: 6px;
+}
+#readmd-search-results.readmd-hidden { display: none; }
+.readmd-sr-header {
+  font-size: 12px; color: var(--fg-muted);
+  padding: 6px 10px 8px;
+}
+.readmd-sr-item {
+  display: flex; flex-direction: column; gap: 2px;
+  width: 100%; text-align: left;
+  background: none; border: none; border-radius: 6px;
+  padding: 7px 10px; cursor: pointer;
+}
+.readmd-sr-item:hover, .readmd-sr-item:focus-visible { background: var(--bg); }
+.readmd-sr-title { font-size: 13px; color: var(--link); }
+.readmd-sr-snippet { font-size: 12px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.readmd-sr-snippet mark { background: var(--mark); color: inherit; }
+
+/* Quick-open file palette (Ctrl+P). */
+#readmd-quickopen {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: flex-start; justify-content: center;
+  background: rgba(0, 0, 0, .5);
+  padding-top: 12vh;
+}
+#readmd-quickopen.readmd-hidden { display: none; }
+#readmd-quickopen-panel {
+  width: min(620px, 92vw);
+  background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .5);
+  overflow: hidden;
+}
+#readmd-quickopen-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg); color: var(--fg);
+  border: none; border-bottom: 1px solid var(--border);
+  padding: 14px 16px; font-size: 16px; outline: none;
+}
+#readmd-quickopen-list {
+  list-style: none; margin: 0; padding: 6px;
+  max-height: 50vh; overflow: auto;
+}
+.readmd-qo-item {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 8px 10px; border-radius: 6px; cursor: pointer;
+}
+.readmd-qo-item.active, .readmd-qo-item:hover { background: var(--accent); }
+.readmd-qo-item.active .readmd-qo-path, .readmd-qo-item:hover .readmd-qo-path { color: #e6edf3; }
+.readmd-qo-item.active .readmd-qo-title, .readmd-qo-item:hover .readmd-qo-title { color: #fff; }
+.readmd-qo-title { font-size: 14px; }
+.readmd-qo-path { font-size: 12px; color: var(--fg-muted); }
+

@@ -135,6 +135,65 @@ public sealed class WebViewerServer : IAsyncDisposable
             await ctx.Response.SendFileAsync(full, ctx.RequestAborted);
         });
 
+        // Export the current (or requested) document as a self-contained .html, or a .pdf rendered
+        // through the same headless browser used for diagrams. Sandboxed to the document root.
+        app.MapGet("/_readmd/export", async (HttpContext ctx) =>
+        {
+            var path = ctx.Request.Query["path"].FirstOrDefault();
+            // An explicit out-of-root path is rejected; an absent path exports the current document.
+            var target = string.IsNullOrEmpty(path) ? _currentPath : ResolveRequestedPath(path);
+            if (target is null || !File.Exists(target)) { ctx.Response.StatusCode = 404; return; }
+
+            var format = (ctx.Request.Query["format"].FirstOrDefault() ?? "html").Trim().ToLowerInvariant();
+            var baseName = Path.GetFileNameWithoutExtension(target);
+            try
+            {
+                var html = await HtmlExporter.ExportAsync(target, _diagrams, _options.Theme, ctx.RequestAborted);
+                if (format == "pdf")
+                {
+                    var pdf = await PdfRenderer.RenderAsync(html, ctx.RequestAborted);
+                    ctx.Response.ContentType = "application/pdf";
+                    ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"{SanitizeFileName(baseName)}.pdf\"";
+                    await ctx.Response.Body.WriteAsync(pdf, ctx.RequestAborted);
+                }
+                else
+                {
+                    ctx.Response.ContentType = "text/html; charset=utf-8";
+                    ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"{SanitizeFileName(baseName)}.html\"";
+                    await ctx.Response.WriteAsync(html, ctx.RequestAborted);
+                }
+            }
+            catch (OperationCanceledException) { /* client navigated away */ }
+            catch (Exception ex)
+            {
+                if (!ctx.Response.HasStarted)
+                {
+                    ctx.Response.StatusCode = 500;
+                    ctx.Response.ContentType = "text/plain; charset=utf-8";
+                    await ctx.Response.WriteAsync($"Export failed: {ex.Message}", ctx.RequestAborted);
+                }
+            }
+        });
+
+        // Project-wide search across the sandbox's markdown files.
+        app.MapGet("/_readmd/search", (HttpContext ctx) =>
+        {
+            var q = ctx.Request.Query["q"].FirstOrDefault() ?? "";
+            var hits = WikiIndex.Search(_resolver.Root, q)
+                .Select(h => new { path = h.Path, relative = h.Relative, title = h.Title, line = h.Line, snippet = h.Snippet });
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            return ctx.Response.WriteAsync(JsonSerializer.Serialize(hits), ctx.RequestAborted);
+        });
+
+        // Lists the markdown files in the sandbox (for the quick-open palette).
+        app.MapGet("/_readmd/tree", (HttpContext ctx) =>
+        {
+            var files = WikiIndex.ListFiles(_resolver.Root)
+                .Select(f => new { path = f.Path, relative = f.Relative, title = f.Title });
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            return ctx.Response.WriteAsync(JsonSerializer.Serialize(files), ctx.RequestAborted);
+        });
+
         app.MapGet("/_readmd/events", async (HttpContext ctx) =>
         {
             ctx.Response.Headers.CacheControl = "no-cache";
@@ -175,6 +234,14 @@ public sealed class WebViewerServer : IAsyncDisposable
         var full = Path.GetFullPath(requested);
         if (!_resolver.IsInsideRoot(full) || !File.Exists(full)) return null;
         return full;
+    }
+
+    // Strips characters that aren't safe in a download filename / Content-Disposition header.
+    private static string SanitizeFileName(string name)
+    {
+        var cleaned = new string(name.Select(c => char.IsControl(c) || c is '"' or '\\' or '/' or ':' or '*' or '?' or '<' or '>' or '|' ? '_' : c).ToArray());
+        cleaned = cleaned.Trim();
+        return string.IsNullOrEmpty(cleaned) ? "document" : cleaned;
     }
 
     private async Task<MarkdownDocument> RenderDocumentAsync(string path, CancellationToken ct)

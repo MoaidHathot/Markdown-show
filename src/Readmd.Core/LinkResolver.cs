@@ -86,4 +86,8 @@ public sealed class LinkResolver(string rootDirectory)
     public static bool IsExternal(string target) =>
         Uri.TryCreate(target, UriKind.Absolute, out var uri) &&
         uri.Scheme is "http" or "https" or "mailto" or "ftp" or "tel";
+
+    /// <summary>True if the path has a recognized Markdown extension.</summary>
+    public static bool IsMarkdownFile(string path) =>
+        MarkdownExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
 }

@@ -94,6 +94,83 @@ public class WebServerTests
         finally { TryDelete(dir); }
     }
 
+    [Fact]
+    public async Task Export_html_returns_self_contained_attachment()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "readmd-web-" + Guid.NewGuid().ToString("N"));
+        var doc = WriteDoc(dir, "report.md", "# Title\n\nBody and `code`.\n");
+        await using var server = new WebViewerServer(new WebViewerOptions { FilePath = doc, Port = 0 }, new StubDiagrams());
+        await server.StartAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var resp = await http.GetAsync(server.Url + "/_readmd/export?format=html");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.Contains("attachment", resp.Content.Headers.ContentDisposition?.ToString() ?? "");
+            Assert.Contains("report", resp.Content.Headers.ContentDisposition?.ToString() ?? "");
+            var html = await resp.Content.ReadAsStringAsync();
+            Assert.Contains("<style>", html);
+            Assert.DoesNotContain("/_readmd/", html); // self-contained
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
+    public async Task Export_rejects_path_outside_the_sandbox()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "readmd-web-" + Guid.NewGuid().ToString("N"));
+        var doc = WriteDoc(dir, "doc.md", "# Hi\n");
+        var outsideDir = Path.Combine(Path.GetTempPath(), "readmd-web-out-" + Guid.NewGuid().ToString("N"));
+        var secret = WriteDoc(outsideDir, "secret.md", "# Secret\n");
+        await using var server = new WebViewerServer(new WebViewerOptions { FilePath = doc, Port = 0 }, new StubDiagrams());
+        await server.StartAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var resp = await http.GetAsync($"{server.Url}/_readmd/export?format=html&path={Uri.EscapeDataString(secret)}");
+            Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        }
+        finally { TryDelete(dir); TryDelete(outsideDir); }
+    }
+
+    [Fact]
+    public async Task Search_finds_matches_in_other_files()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "readmd-web-" + Guid.NewGuid().ToString("N"));
+        WriteDoc(dir, "doc.md", "# Home\n");
+        WriteDoc(dir, "other.md", "# Other\n\nThe quick brown zqxfox jumps.\n");
+        await using var server = new WebViewerServer(new WebViewerOptions { FilePath = Path.Combine(dir, "doc.md"), Port = 0 }, new StubDiagrams());
+        await server.StartAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var json = await http.GetStringAsync(server.Url + "/_readmd/search?q=zqxfox");
+            Assert.Contains("other.md", json);
+            Assert.Contains("zqxfox", json);
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
+    public async Task Tree_lists_markdown_files_in_the_sandbox()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "readmd-web-" + Guid.NewGuid().ToString("N"));
+        WriteDoc(dir, "a.md", "# A\n");
+        WriteDoc(Path.Combine(dir, "sub"), "b.md", "# B\n");
+        WriteDoc(dir, "ignore.txt", "not markdown");
+        await using var server = new WebViewerServer(new WebViewerOptions { FilePath = Path.Combine(dir, "a.md"), Port = 0 }, new StubDiagrams());
+        await server.StartAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var json = await http.GetStringAsync(server.Url + "/_readmd/tree");
+            Assert.Contains("a.md", json);
+            Assert.Contains("b.md", json);
+            Assert.DoesNotContain("ignore.txt", json);
+        }
+        finally { TryDelete(dir); }
+    }
+
     private static void TryDelete(string dir)
     {
         try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { /* ignore */ }

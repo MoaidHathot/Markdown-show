@@ -4,6 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>__TITLE__</title>
+  <script>
+    // Apply the saved theme before stylesheets load to avoid a flash of the wrong theme.
+    try {
+      var p = JSON.parse(localStorage.getItem("readmd:prefs") || "{}");
+      if (p && (p.theme === "dark" || p.theme === "light")) {
+        document.documentElement.setAttribute("data-theme", p.theme);
+      }
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="/_readmd/vendor/katex.min.css" />
   <link rel="stylesheet" id="hljs-theme" href="/_readmd/vendor/github-dark.min.css" />
   <link rel="stylesheet" href="/_readmd/app.css" />
@@ -25,6 +34,13 @@
         <button id="readmd-search-prev" type="button" title="Previous (Shift+Enter)" aria-label="Previous match">▲</button>
         <button id="readmd-search-next" type="button" title="Next (Enter)" aria-label="Next match">▼</button>
         <span class="readmd-spacer"></span>
+        <div id="readmd-export-wrap">
+          <button id="readmd-export" type="button" title="Export (e)" aria-label="Export document" aria-haspopup="true" aria-expanded="false">⬇</button>
+          <div id="readmd-export-menu" class="readmd-hidden" role="menu" aria-label="Export format">
+            <button type="button" role="menuitem" data-format="html">Self-contained HTML</button>
+            <button type="button" role="menuitem" data-format="pdf">PDF</button>
+          </div>
+        </div>
         <button id="readmd-toggle-zen" type="button" title="Zen mode (z)" aria-label="Toggle zen mode">⛶</button>
         <button id="readmd-theme-toggle" type="button" title="Toggle theme ([)" aria-label="Toggle light/dark theme">◐</button>
         <button id="readmd-back" type="button" title="Back (Alt+←)" aria-label="Go back">←</button>
@@ -33,6 +49,7 @@
       <article id="readmd-content" tabindex="-1">__BODY__</article>
     </main>
   </div>
+  <div id="readmd-search-results" class="readmd-hidden" role="listbox" aria-label="Search results in other files"></div>
   <div id="readmd-status" class="readmd-hidden" role="status" aria-live="polite"><span id="readmd-status-text"></span></div>
 
   <div id="readmd-help-overlay" class="readmd-hidden" role="dialog" aria-modal="true" aria-label="Keybindings">
@@ -41,6 +58,25 @@
       <div id="readmd-help-body"></div>
       <div id="readmd-help-foot">press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>
     </div>
+   </div>
+
+  <div id="readmd-quickopen" class="readmd-hidden" role="dialog" aria-modal="true" aria-label="Quick open file">
+    <div id="readmd-quickopen-panel">
+      <input id="readmd-quickopen-input" type="text" placeholder="Go to file…" aria-label="Filter files" autocomplete="off" />
+      <ul id="readmd-quickopen-list" role="listbox" aria-label="Files"></ul>
+    </div>
+  </div>
+
+  <div id="readmd-lightbox" class="readmd-hidden" role="dialog" aria-modal="true" aria-label="Diagram viewer">
+    <div id="readmd-lightbox-toolbar">
+      <button type="button" data-act="out" title="Zoom out (-)" aria-label="Zoom out">−</button>
+      <button type="button" data-act="reset" title="Reset (0)" aria-label="Reset zoom">⟳</button>
+      <button type="button" data-act="in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button type="button" data-act="copy" title="Copy SVG" aria-label="Copy SVG">Copy</button>
+      <button type="button" data-act="open" title="Open in new tab" aria-label="Open SVG in new tab">Open</button>
+      <button type="button" data-act="close" title="Close (Esc)" aria-label="Close">×</button>
+    </div>
+    <div id="readmd-lightbox-stage"><div id="readmd-lightbox-canvas"></div></div>
   </div>
 
   <script src="/_readmd/vendor/katex.min.js"></script>

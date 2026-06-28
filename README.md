@@ -24,7 +24,7 @@ dnx readmd report.md --browser       # view in the browser (full fidelity)
 - **Diagrams** from fenced code blocks: **mermaid**, **D2**, **Graphviz** (`graphviz`/`dot`), and **PlantUML** (`plantuml`/`puml`) — rendered to images inline in the terminal (via Sixel) and shown natively in the browser. Render failures are reported inline with an actionable message.
 - **Math** via KaTeX (browser) / a Unicode approximation (terminal), **code** via TextMate (terminal) / highlight.js (browser).
 - **Multi-file wiki navigation**: follow local `.md` links with back/forward history (sandboxed to the document's directory). Opening an external link asks for confirmation first.
-- **Browser mode** (`--browser`) for pixel-perfect rendering, served locally (loopback only) from an embedded web server.
+- **Browser mode** (`--browser`) for pixel-perfect rendering, served locally (loopback only) from an embedded web server. The browser view adds: **export** the current document to a self-contained `.html` or a `.pdf`; **copy buttons** on code blocks and **permalink anchors** on headings; a **diagram lightbox** (click any mermaid/D2 diagram to zoom/pan, copy or open its SVG); **project-wide search** across the wiki and a **`Ctrl+P` quick-open** file palette; and **persisted** theme/zen/sidebar preferences.
 - **Export & piping**: `--export` writes a self-contained `.html` or `.pdf`; with a redirected stdout (or stdin via `-`) it renders to text, so `readmd file.md | less -R` and `cat file.md | readmd -` just work.
 
 ## Usage
@@ -106,12 +106,12 @@ The browser view uses the same vim-style motions, plus toggles to hide chrome:
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
-| `j` / `k` (or arrows) | Scroll | `/` or `Ctrl+F` | Search |
+| `j` / `k` (or arrows) | Scroll | `/` or `Ctrl+F` | Search (this page + other files) |
 | `Ctrl+d` / `Ctrl+u` | Half page | `n` / `N` | Next / previous match |
-| `Ctrl+f` / `Ctrl+b` | Full page | `t` | Toggle sidebar (TOC) |
-| `Space` / `PageUp` | Page down / up | `s` | Toggle toolbar |
+| `Ctrl+f` / `Ctrl+b` | Full page | `Ctrl+P` | Quick-open a file |
+| `Space` / `PageUp` | Page down / up | `t` / `s` | Toggle sidebar / toolbar |
 | `gg` / `G` | Top / bottom | `z` | Zen mode (hide all chrome) |
-| `Alt+←` / `Alt+→` | Back / forward | `[` | Toggle light / dark theme |
+| `Alt+←` / `Alt+→` | Back / forward | `[` / `e` | Toggle theme / export |
 
 ## Configuration
 
