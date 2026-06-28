@@ -408,3 +408,29 @@ body.readmd-zen #readmd-content { max-width: 820px; }
   background: #fff; border-radius: 8px;
 }
 
+/* Project-wide search results panel. */
+#readmd-search-results {
+  position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+  z-index: 40; width: min(680px, 92vw);
+  max-height: 60vh; overflow: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .4);
+  padding: 6px;
+}
+#readmd-search-results.readmd-hidden { display: none; }
+.readmd-sr-header {
+  font-size: 12px; color: var(--fg-muted);
+  padding: 6px 10px 8px;
+}
+.readmd-sr-item {
+  display: flex; flex-direction: column; gap: 2px;
+  width: 100%; text-align: left;
+  background: none; border: none; border-radius: 6px;
+  padding: 7px 10px; cursor: pointer;
+}
+.readmd-sr-item:hover, .readmd-sr-item:focus-visible { background: var(--bg); }
+.readmd-sr-title { font-size: 13px; color: var(--link); }
+.readmd-sr-snippet { font-size: 12px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.readmd-sr-snippet mark { background: var(--mark); color: inherit; }
+

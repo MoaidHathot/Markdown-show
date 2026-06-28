@@ -175,6 +175,25 @@ public sealed class WebViewerServer : IAsyncDisposable
             }
         });
 
+        // Project-wide search across the sandbox's markdown files.
+        app.MapGet("/_readmd/search", (HttpContext ctx) =>
+        {
+            var q = ctx.Request.Query["q"].FirstOrDefault() ?? "";
+            var hits = WikiIndex.Search(_resolver.Root, q)
+                .Select(h => new { path = h.Path, relative = h.Relative, title = h.Title, line = h.Line, snippet = h.Snippet });
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            return ctx.Response.WriteAsync(JsonSerializer.Serialize(hits), ctx.RequestAborted);
+        });
+
+        // Lists the markdown files in the sandbox (for the quick-open palette).
+        app.MapGet("/_readmd/tree", (HttpContext ctx) =>
+        {
+            var files = WikiIndex.ListFiles(_resolver.Root)
+                .Select(f => new { path = f.Path, relative = f.Relative, title = f.Title });
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            return ctx.Response.WriteAsync(JsonSerializer.Serialize(files), ctx.RequestAborted);
+        });
+
         app.MapGet("/_readmd/events", async (HttpContext ctx) =>
         {
             ctx.Response.Headers.CacheControl = "no-cache";

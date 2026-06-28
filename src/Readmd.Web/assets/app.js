@@ -274,13 +274,72 @@ let searchTimer;
 searchInput.addEventListener("input", () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => runSearch(searchInput.value), 150);
+  scheduleProjectSearch(searchInput.value);
 });
 searchInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); nextHit(e.shiftKey ? -1 : 1); }
-  if (e.key === "Escape") { searchInput.value = ""; clearSearch(); searchInput.blur(); }
+  if (e.key === "Escape") { searchInput.value = ""; clearSearch(); hideSearchResults(); searchInput.blur(); }
 });
 document.getElementById("readmd-search-next").addEventListener("click", () => nextHit(1));
 document.getElementById("readmd-search-prev").addEventListener("click", () => nextHit(-1));
+
+// ---------------- project-wide search (other files) ----------------
+const searchResults = document.getElementById("readmd-search-results");
+let projectSearchTimer;
+function scheduleProjectSearch(q) {
+  clearTimeout(projectSearchTimer);
+  if (!q || q.length < 2) { hideSearchResults(); return; }
+  projectSearchTimer = setTimeout(() => runProjectSearch(q), 280);
+}
+async function runProjectSearch(q) {
+  try {
+    const resp = await fetch(`/_readmd/search?q=${encodeURIComponent(q)}`);
+    if (!resp.ok) { hideSearchResults(); return; }
+    const hits = await resp.json();
+    // Don't show hits for the page we're already viewing (the in-page search covers those).
+    const other = hits.filter((h) => normalize(h.path) !== normalize(currentPath));
+    renderSearchResults(other, q);
+  } catch { hideSearchResults(); }
+}
+function renderSearchResults(hits, q) {
+  searchResults.innerHTML = "";
+  if (!hits.length) { hideSearchResults(); return; }
+  const header = document.createElement("div");
+  header.className = "readmd-sr-header";
+  header.textContent = `${hits.length} match${hits.length === 1 ? "" : "es"} in other files`;
+  searchResults.appendChild(header);
+  for (const h of hits) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "readmd-sr-item";
+    row.setAttribute("role", "option");
+    const title = document.createElement("span");
+    title.className = "readmd-sr-title";
+    title.textContent = `${h.title} · ${h.relative}:${h.line}`;
+    const snip = document.createElement("span");
+    snip.className = "readmd-sr-snippet";
+    snip.innerHTML = highlightSnippet(h.snippet, q);
+    row.appendChild(title);
+    row.appendChild(snip);
+    row.addEventListener("click", () => { hideSearchResults(); navigate(h.path); });
+    searchResults.appendChild(row);
+  }
+  searchResults.classList.remove("readmd-hidden");
+}
+function highlightSnippet(text, q) {
+  const safe = escapeHtml(text);
+  const i = safe.toLowerCase().indexOf(escapeHtml(q).toLowerCase());
+  if (i < 0) return safe;
+  const len = escapeHtml(q).length;
+  return safe.slice(0, i) + "<mark>" + safe.slice(i, i + len) + "</mark>" + safe.slice(i + len);
+}
+function hideSearchResults() { searchResults.classList.add("readmd-hidden"); searchResults.innerHTML = ""; }
+document.addEventListener("click", (e) => {
+  if (!searchResults.classList.contains("readmd-hidden") &&
+      !e.target.closest("#readmd-search-results") && e.target !== searchInput) {
+    hideSearchResults();
+  }
+});
 
 // ---------------- navigation (multi-file wiki) ----------------
 async function navigate(path, push = true) {
