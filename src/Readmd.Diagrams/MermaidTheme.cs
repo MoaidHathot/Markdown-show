@@ -8,18 +8,31 @@ namespace Readmd.Diagrams;
 /// </summary>
 public static class MermaidTheme
 {
-    /// <summary>The full mermaid <c>initialize</c> config (with <c>startOnLoad:false</c>) for a Playwright render.</summary>
-    internal static string ConfigJson(bool dark) =>
-        $$"""
+    /// <summary>
+    /// The full mermaid <c>initialize</c> config (with <c>startOnLoad:false</c>).
+    /// </summary>
+    /// <param name="dark">Selects the dark/light palette.</param>
+    /// <param name="htmlLabels">
+    /// When true (the browser/Playwright path), labels use HTML in <c>&lt;foreignObject&gt;</c>.
+    /// When false, labels are emitted as native SVG <c>&lt;text&gt;</c> — required for the mmdc path,
+    /// because the in-process SVG rasterizer (Svg.Skia) does not render <c>&lt;foreignObject&gt;</c>
+    /// and would otherwise drop all text/labels.
+    /// </param>
+    internal static string ConfigJson(bool dark, bool htmlLabels = true)
+    {
+        var html = htmlLabels ? "true" : "false";
+        return $$"""
         {
           "startOnLoad": false,
           "theme": "base",
           "securityLevel": "loose",
-          "flowchart": { "curve": "basis", "htmlLabels": true, "padding": 12 },
+          "htmlLabels": {{html}},
+          "flowchart": { "curve": "basis", "htmlLabels": {{html}}, "padding": 12 },
           "sequence": { "useMaxWidth": true, "mirrorActors": false },
           "themeVariables": {{ThemeVariablesJson(dark)}}
         }
         """;
+    }
 
     /// <summary>
     /// Both palettes as <c>{ "dark": { … }, "light": { … } }</c>, for injection into the browser

@@ -9,8 +9,8 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>readmd</ToolCommandName>
     <PackageId>readmd</PackageId>
-    <Version>0.2.1</Version>
-    <InformationalVersion>0.2.1</InformationalVersion>
+    <Version>0.2.2</Version>
+    <InformationalVersion>0.2.2</InformationalVersion>
     <Authors>MoaidHathot</Authors>
     <Title>readmd — terminal Markdown viewer</Title>
     <Description>A terminal-first, feature-rich Markdown viewer with live reload, search, [[_TOC_]], mermaid and D2 diagrams, and an optional browser mode.</Description>

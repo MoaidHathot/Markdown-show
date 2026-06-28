@@ -39,7 +39,9 @@ internal sealed class MermaidCliRenderer
         try
         {
             await File.WriteAllTextAsync(input, request.Source, ct);
-            await File.WriteAllTextAsync(configFile, MermaidTheme.ConfigJson(theme == DiagramTheme.Dark), ct);
+            // Use native SVG <text> labels (htmlLabels:false): the in-process SVG rasterizer doesn't
+            // render <foreignObject> HTML, so HTML labels would come out blank.
+            await File.WriteAllTextAsync(configFile, MermaidTheme.ConfigJson(theme == DiagramTheme.Dark, htmlLabels: false), ct);
 
             await RunMmdcAsync(input, output, configFile, ct);
             if (!File.Exists(output))

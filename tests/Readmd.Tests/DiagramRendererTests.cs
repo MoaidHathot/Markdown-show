@@ -76,3 +76,23 @@ public class ExecutableResolverTests
         Assert.Contains("--version", psi.ArgumentList);
     }
 }
+
+public class MermaidConfigTests
+{
+    [Fact]
+    public void Default_config_uses_html_labels()
+    {
+        var json = MermaidTheme.ConfigJson(dark: true);
+        Assert.Contains("\"htmlLabels\": true", json);
+    }
+
+    [Fact]
+    public void Cli_config_disables_html_labels_for_native_text()
+    {
+        // The mmdc path must use native <text> (htmlLabels:false) because the in-process SVG
+        // rasterizer does not render <foreignObject> HTML labels.
+        var json = MermaidTheme.ConfigJson(dark: true, htmlLabels: false);
+        Assert.Contains("\"htmlLabels\": false", json);
+        Assert.DoesNotContain("\"htmlLabels\": true", json);
+    }
+}
