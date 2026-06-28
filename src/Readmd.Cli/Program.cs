@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.CommandLine.Invocation;
 using System.Diagnostics;
 using System.Reflection;
 using Readmd.Core;
@@ -60,6 +61,15 @@ var root = new RootCommand("readmd — a terminal-first Markdown viewer with liv
     backgroundOption,
     d2PathOption,
 };
+
+// Replace the built-in --version (which prints the bare version) with a branded one that
+// prints "readmd <version>" consistently, in any argument position.
+for (var i = root.Options.Count - 1; i >= 0; i--)
+{
+    if (root.Options[i] is VersionOption)
+        root.Options.RemoveAt(i);
+}
+root.Options.Add(new VersionOption("--version", ["-v"]) { Action = new PrintVersionAction(version) });
 
 root.SetAction(async (parse, ct) =>
 {
@@ -130,13 +140,6 @@ root.SetAction(async (parse, ct) =>
         await diagrams.DisposeAsync();
     }
 });
-
-// --version: print the tool version and exit before any subcommand action runs.
-if (args.Length == 1 && args[0] is "--version" or "-v")
-{
-    Console.WriteLine($"readmd {version}");
-    return 0;
-}
 
 return await root.Parse(args).InvokeAsync();
 
@@ -224,5 +227,15 @@ static void OpenBrowser(string url)
     catch
     {
         Console.WriteLine($"readmd: open {url} in your browser.");
+    }
+}
+
+/// <summary>Prints "readmd &lt;version&gt;" for --version, regardless of argument position.</summary>
+internal sealed class PrintVersionAction(string version) : SynchronousCommandLineAction
+{
+    public override int Invoke(ParseResult parseResult)
+    {
+        parseResult.InvocationConfiguration.Output.WriteLine($"readmd {version}");
+        return 0;
     }
 }
