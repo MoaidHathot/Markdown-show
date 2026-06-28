@@ -156,8 +156,35 @@ html, body {
   border-radius: 8px;
   padding: 14px 16px;
   overflow: auto;
+  position: relative;
 }
 #readmd-content pre code { background: none; padding: 0; font-size: 90%; }
+
+/* Code-block copy button (shown on hover/focus). */
+.readmd-copy-btn {
+  position: absolute; top: 8px; right: 8px;
+  background: var(--bg-elev); color: var(--fg-muted);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 2px 8px; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .12s ease;
+}
+#readmd-content pre:hover .readmd-copy-btn,
+#readmd-content pre:focus-within .readmd-copy-btn,
+.readmd-copy-btn:focus-visible { opacity: 1; }
+.readmd-copy-btn:hover { border-color: var(--accent); color: var(--fg); }
+.readmd-copy-btn.readmd-copied { color: #fff; background: var(--accent); border-color: transparent; }
+
+/* Heading permalink anchors (shown on heading hover). */
+#readmd-content :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: 64px; }
+.readmd-anchor {
+  margin-left: .4em; color: var(--fg-muted);
+  text-decoration: none; font-weight: 400;
+  opacity: 0; transition: opacity .12s ease;
+}
+#readmd-content :is(h1, h2, h3, h4, h5, h6):hover .readmd-anchor,
+.readmd-anchor:focus-visible { opacity: .7; }
+.readmd-anchor:hover { opacity: 1 !important; color: var(--link); text-decoration: none; }
+
 #readmd-content table { border-collapse: collapse; width: 100%; margin: 16px 0; display: block; overflow: auto; }
 #readmd-content th, #readmd-content td { border: 1px solid var(--border); padding: 6px 13px; }
 #readmd-content tr:nth-child(2n) { background: var(--bg-elev); }

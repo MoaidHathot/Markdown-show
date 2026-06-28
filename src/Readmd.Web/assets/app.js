@@ -90,6 +90,51 @@ async function renderAll(root) {
   renderMath(root);
   await renderMermaid(root);
   await renderD2(root);
+  addCopyButtons(root);
+}
+
+// Adds a hover "Copy" button to every code block (skipping diagram containers).
+function addCopyButtons(root) {
+  root.querySelectorAll("pre:not([data-readmd-copy])").forEach((pre) => {
+    if (pre.closest(".readmd-diagram")) return;
+    const code = pre.querySelector("code") || pre;
+    pre.setAttribute("data-readmd-copy", "1");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "readmd-copy-btn";
+    btn.textContent = "Copy";
+    btn.setAttribute("aria-label", "Copy code to clipboard");
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      try {
+        await navigator.clipboard.writeText(code.innerText.replace(/\n$/, ""));
+        btn.textContent = "Copied!";
+        btn.classList.add("readmd-copied");
+      } catch {
+        btn.textContent = "Failed";
+      }
+      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("readmd-copied"); }, 1400);
+    });
+    pre.appendChild(btn);
+  });
+}
+
+// Appends a "#" permalink anchor to a heading; clicking copies the full URL with the fragment.
+function addHeadingAnchor(h) {
+  if (h.querySelector(".readmd-anchor")) return;
+  const link = document.createElement("a");
+  link.className = "readmd-anchor";
+  link.href = "#" + h.id;
+  link.textContent = "#";
+  link.setAttribute("aria-label", "Link to this section");
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    h.scrollIntoView({ behavior: "smooth", block: "start" });
+    history.replaceState(history.state, "", "#" + h.id);
+    const url = location.origin + location.pathname + location.search + "#" + h.id;
+    navigator.clipboard?.writeText(url).then(() => flashStatus("Link copied"), () => {});
+  });
+  h.appendChild(link);
 }
 
 // ---------------- table of contents ----------------
@@ -99,6 +144,7 @@ function buildToc() {
   const entries = [];
   headings.forEach((h) => {
     if (!h.id) h.id = slugify(h.textContent);
+    addHeadingAnchor(h);
     const level = Number(h.tagName.substring(1));
     const a = document.createElement("a");
     a.href = "#" + h.id;
