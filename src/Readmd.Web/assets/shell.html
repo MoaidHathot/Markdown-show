@@ -25,6 +25,13 @@
         <button id="readmd-search-prev" type="button" title="Previous (Shift+Enter)" aria-label="Previous match">▲</button>
         <button id="readmd-search-next" type="button" title="Next (Enter)" aria-label="Next match">▼</button>
         <span class="readmd-spacer"></span>
+        <div id="readmd-export-wrap">
+          <button id="readmd-export" type="button" title="Export (e)" aria-label="Export document" aria-haspopup="true" aria-expanded="false">⬇</button>
+          <div id="readmd-export-menu" class="readmd-hidden" role="menu" aria-label="Export format">
+            <button type="button" role="menuitem" data-format="html">Self-contained HTML</button>
+            <button type="button" role="menuitem" data-format="pdf">PDF</button>
+          </div>
+        </div>
         <button id="readmd-toggle-zen" type="button" title="Zen mode (z)" aria-label="Toggle zen mode">⛶</button>
         <button id="readmd-theme-toggle" type="button" title="Toggle theme ([)" aria-label="Toggle light/dark theme">◐</button>
         <button id="readmd-back" type="button" title="Back (Alt+←)" aria-label="Go back">←</button>

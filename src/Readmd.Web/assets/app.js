@@ -317,6 +317,42 @@ document.getElementById("readmd-theme-toggle").addEventListener("click", async (
 document.getElementById("readmd-back").addEventListener("click", () => history.back());
 document.getElementById("readmd-forward").addEventListener("click", () => history.forward());
 
+// ---------------- export (HTML / PDF) ----------------
+const exportBtn = document.getElementById("readmd-export");
+const exportMenu = document.getElementById("readmd-export-menu");
+function toggleExportMenu(force) {
+  const show = force ?? exportMenu.classList.contains("readmd-hidden");
+  exportMenu.classList.toggle("readmd-hidden", !show);
+  exportBtn.setAttribute("aria-expanded", String(show));
+  if (show) exportMenu.querySelector("button")?.focus();
+}
+function doExport(format) {
+  toggleExportMenu(false);
+  const params = new URLSearchParams({ format });
+  if (currentPath) params.set("path", currentPath);
+  if (format === "pdf") showStatus("Preparing PDF…");
+  // Trigger a download by navigating a hidden iframe; the attachment Content-Disposition makes the
+  // browser save it without leaving the page. An error (e.g. PDF tooling missing) flashes a status.
+  let frame = document.getElementById("readmd-download-frame");
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.id = "readmd-download-frame";
+    frame.style.display = "none";
+    document.body.appendChild(frame);
+  }
+  frame.src = `/_readmd/export?${params.toString()}`;
+  if (format === "pdf") setTimeout(hideStatus, 4000);
+}
+exportBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleExportMenu(); });
+exportMenu?.addEventListener("click", (e) => {
+  const item = e.target.closest("button[data-format]");
+  if (item) doExport(item.getAttribute("data-format"));
+});
+document.addEventListener("click", (e) => {
+  if (!exportMenu.classList.contains("readmd-hidden") && !e.target.closest("#readmd-export-wrap")) toggleExportMenu(false);
+});
+exportMenu?.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); toggleExportMenu(false); exportBtn.focus(); } });
+
 // ---------------- view toggles (sidebar / toolbar / zen) ----------------
 const layout = document.getElementById("readmd-layout");
 const toolbar = document.getElementById("readmd-toolbar");
@@ -465,6 +501,7 @@ document.addEventListener("keydown", (e) => {
     case "s": e.preventDefault(); toggleToolbar(); break;
     case "z": e.preventDefault(); toggleZen(); break;
     case "[": e.preventDefault(); document.getElementById("readmd-theme-toggle").click(); break;
+    case "e": e.preventDefault(); toggleExportMenu(true); break;
     case "r": e.preventDefault(); location.reload(); break;
     case "?": e.preventDefault(); toggleHelp(); break;
   }

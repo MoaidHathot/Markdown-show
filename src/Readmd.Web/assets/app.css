@@ -105,6 +105,30 @@ html, body {
 }
 #readmd-toolbar button:hover { border-color: var(--accent); }
 
+/* Export dropdown menu. */
+#readmd-export-wrap { position: relative; display: inline-flex; }
+#readmd-export-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  min-width: 200px;
+  display: flex; flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  padding: 4px;
+}
+#readmd-export-menu button {
+  text-align: left;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  width: 100%;
+}
+#readmd-export-menu button:hover, #readmd-export-menu button:focus-visible {
+  background: var(--accent); color: #fff; border-color: transparent;
+}
+
 #readmd-content {
   width: 100%;
   max-width: var(--readmd-max-content);
