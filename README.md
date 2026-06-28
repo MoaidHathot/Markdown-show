@@ -21,7 +21,7 @@ dnx readmd report.md --browser       # view in the browser (full fidelity)
 - **Live reload** on file change. The browser preserves scroll position (DOM-morphing instead of full reload); the terminal repaints in place and caches diagrams so they don't flicker.
 - **Search & navigation**: `/` to search, `n`/`N` to jump, `t` for a table-of-contents overlay, `?` for keybindings.
 - **Azure DevOps `[[_TOC_]]`** marker support, plus a sticky TOC sidebar in the browser.
-- **Mermaid & D2 diagrams**: rendered to images inline in the terminal (via Sixel), and natively in the browser. Render failures are reported inline with an actionable message.
+- **Diagrams** from fenced code blocks: **mermaid**, **D2**, **Graphviz** (`graphviz`/`dot`), and **PlantUML** (`plantuml`/`puml`) — rendered to images inline in the terminal (via Sixel) and shown natively in the browser. Render failures are reported inline with an actionable message.
 - **Math** via KaTeX (browser) / a Unicode approximation (terminal), **code** via TextMate (terminal) / highlight.js (browser).
 - **Multi-file wiki navigation**: follow local `.md` links with back/forward history (sandboxed to the document's directory). Opening an external link asks for confirmation first.
 - **Browser mode** (`--browser`) for pixel-perfect rendering, served locally (loopback only) from an embedded web server.
@@ -161,7 +161,7 @@ mouse, `Ctrl`-combinations, the `gg` prefix, and `1`–`9` link-following are fi
 | Project | Responsibility |
 | --- | --- |
 | **Readmd.Core** | Markdig pipeline, `[[_TOC_]]` extension, TOC/diagram extraction, file watching, link resolution, diagram cache contracts. |
-| **Readmd.Diagrams** | Renders mermaid (headless Chromium via Playwright, with mermaid bundled) and D2 (`d2` → SVG → PNG via SkiaSharp), cached by content hash. |
+| **Readmd.Diagrams** | Renders mermaid (local `mmdc`, else headless Chromium via Playwright with mermaid bundled), D2, Graphviz (`dot`), and PlantUML — each external tool → SVG → PNG via SkiaSharp — cached by content hash. |
 | **Readmd.Web** | Kestrel server: HTML rendering, server-rendered D2 SVG, SSE live-reload with `idiomorph`, multi-file SPA navigation, embedded assets. |
 | **Readmd.Terminal** | Hand-rolled TUI: ANSI/truecolor renderer, Markdown→styled-line layout, TextMate highlighting, Sixel image output, search/TOC/links/history. |
 | **Readmd.Cli** | `System.CommandLine` entry point; packaged as the `readmd` .NET tool. |
@@ -176,7 +176,7 @@ Inline diagrams in the terminal use the **Sixel** graphics protocol. Supported t
 
 `readmd` targets .NET 10 and is cross-platform (Windows, macOS, Linux). Mouse support — **wheel scrolling, click-to-follow-link, and drag-select in `m` mark mode** — works on all three: Windows uses the console API, while macOS/Linux use SGR mouse reporting (with the terminal put in raw mode via `termios`). Every keybinding works on all platforms, and the browser front-end is identical everywhere.
 
-> **Mermaid rendering:** if a local `mmdc` (mermaid-cli, `npm i -g @mermaid-js/mermaid-cli`) is on your `PATH` — or set via `mermaidCliPath` in config — readmd uses it and skips its own browser download entirely. Otherwise the first mermaid diagram triggers a one-time headless-browser (Chromium) download via Playwright, which can be large; use `--best-effort` to skip it (mermaid then opens in your browser on demand). D2 requires the `d2` binary on your `PATH` (or `--d2-path`); if it's missing, the diagram area shows an actionable message.
+> **Mermaid rendering:** if a local `mmdc` (mermaid-cli, `npm i -g @mermaid-js/mermaid-cli`) is on your `PATH` — or set via `mermaidCliPath` in config — readmd uses it and skips its own browser download entirely. Otherwise the first mermaid diagram triggers a one-time headless-browser (Chromium) download via Playwright, which can be large; use `--best-effort` to skip it (mermaid then opens in your browser on demand). D2 requires the `d2` binary on your `PATH` (or `--d2-path`); if it's missing, the diagram area shows an actionable message. **Graphviz** blocks require `dot` on your `PATH`, and **PlantUML** blocks require `plantuml` (and Java); both can also be pointed at via `graphvizPath`/`plantUmlPath` in config.
 
 ## Building from source
 

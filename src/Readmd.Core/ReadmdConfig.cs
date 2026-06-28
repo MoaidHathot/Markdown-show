@@ -23,6 +23,12 @@ public sealed class ReadmdConfig
     /// <summary>Path to a local <c>mmdc</c> (mermaid-cli) to render mermaid without Chromium.</summary>
     [JsonPropertyName("mermaidCliPath")] public string? MermaidCliPath { get; set; }
 
+    /// <summary>Path to the Graphviz <c>dot</c> executable (for <c>graphviz</c>/<c>dot</c> code blocks).</summary>
+    [JsonPropertyName("graphvizPath")] public string? GraphvizPath { get; set; }
+
+    /// <summary>Path to the <c>plantuml</c> launcher (for <c>plantuml</c>/<c>puml</c> code blocks).</summary>
+    [JsonPropertyName("plantUmlPath")] public string? PlantUmlPath { get; set; }
+
     /// <summary>Named custom color themes that can be selected via <see cref="Theme"/>.</summary>
     [JsonPropertyName("themes")] public Dictionary<string, ColorTheme>? Themes { get; set; }
 
@@ -54,6 +60,8 @@ public sealed class ReadmdConfig
             Background = overrides.Background ?? Background,
             D2Path = overrides.D2Path ?? D2Path,
             MermaidCliPath = overrides.MermaidCliPath ?? MermaidCliPath,
+            GraphvizPath = overrides.GraphvizPath ?? GraphvizPath,
+            PlantUmlPath = overrides.PlantUmlPath ?? PlantUmlPath,
             Themes = MergeDict(Themes, overrides.Themes),
             Keys = MergeDict(Keys, overrides.Keys),
         };

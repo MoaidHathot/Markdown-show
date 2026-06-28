@@ -30,32 +30,40 @@ public static partial class HtmlExporter
 
         // Inline local images as data URIs and mark external links to open in a new tab.
         var body = HtmlLinkRewriter.RewriteForExport(doc.Html, full, resolver);
-        // Pre-render D2 diagrams (server-side) to inline SVG so the static file needs no server.
-        body = await InlineD2Async(body, doc, diagrams, theme, ct);
+        // Pre-render server-side diagrams (D2/Graphviz/PlantUML) to inline SVG so the static file
+        // needs no server. Mermaid still renders client-side from the embedded library.
+        body = await InlineServerDiagramsAsync(body, doc, diagrams, theme, ct);
 
         return BuildDocument(doc.Title, body, theme);
     }
 
-    private static async Task<string> InlineD2Async(
+    private static async Task<string> InlineServerDiagramsAsync(
         string html, MarkdownDocument doc, IDiagramRenderer diagrams, DiagramTheme theme, CancellationToken ct)
     {
         foreach (var req in doc.Diagrams)
         {
-            if (req.Kind != DiagramKind.D2) continue;
-            var slot = $"<div class=\"readmd-d2-slot\" data-readmd-key=\"{req.Key}\"><div class=\"readmd-diagram-placeholder\">Rendering D2 diagram…</div></div>";
+            if (req.Kind == DiagramKind.Mermaid) continue; // mermaid renders client-side
+            var slot = $"<div class=\"readmd-d2-slot\" data-readmd-key=\"{req.Key}\">";
+            // The placeholder text varies by kind; match on the slot opening and replace the whole div.
+            var startIdx = html.IndexOf(slot, StringComparison.Ordinal);
+            if (startIdx < 0) continue;
+            var endIdx = html.IndexOf("</div>", startIdx, StringComparison.Ordinal);
+            if (endIdx < 0) continue;
+            endIdx += "</div>".Length;
+
             string replacement;
             try
             {
                 var result = await diagrams.RenderAsync(req, theme, ct);
                 replacement = result.Status == DiagramStatus.Ready && result.Svg is not null
                     ? result.Svg
-                    : $"<div class=\"readmd-diagram-error\">D2 error: {System.Net.WebUtility.HtmlEncode(result.Error ?? "render failed")}</div>";
+                    : $"<div class=\"readmd-diagram-error\">{req.Kind} error: {System.Net.WebUtility.HtmlEncode(result.Error ?? "render failed")}</div>";
             }
             catch (Exception ex)
             {
-                replacement = $"<div class=\"readmd-diagram-error\">D2 error: {System.Net.WebUtility.HtmlEncode(ex.Message)}</div>";
+                replacement = $"<div class=\"readmd-diagram-error\">{req.Kind} error: {System.Net.WebUtility.HtmlEncode(ex.Message)}</div>";
             }
-            html = html.Replace(slot, replacement);
+            html = html[..startIdx] + replacement + html[endIdx..];
         }
         return html;
     }

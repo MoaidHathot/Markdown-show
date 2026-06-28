@@ -416,6 +416,27 @@ db -> server: rows
 server -> client: response
 ```
 
+### Graphviz
+
+```dot
+digraph G {
+  rankdir=LR;
+  Parse -> Render -> Display;
+  Render -> Cache [style=dashed];
+}
+```
+
+### PlantUML
+
+```plantuml
+@startuml
+actor User
+User -> readmd : open file
+readmd -> Renderer : parse + render
+Renderer --> User : view
+@enduml
+```
+
 ## Math
 
 The quadratic formula is $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$.

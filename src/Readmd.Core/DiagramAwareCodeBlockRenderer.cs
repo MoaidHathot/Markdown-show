@@ -51,10 +51,20 @@ public sealed class DiagramAwareCodeBlockRenderer(CodeBlockRenderer? fallback) :
         }
         else
         {
-            // D2 is rendered server-side; the placeholder is swapped for inline SVG.
+            // D2 / Graphviz / PlantUML are rendered server-side; the placeholder is swapped for
+            // inline SVG (the browser fetches /_readmd/diagram/{key}; export inlines it directly).
+            var label = kind switch
+            {
+                DiagramKind.D2 => "D2",
+                DiagramKind.Graphviz => "Graphviz",
+                DiagramKind.PlantUml => "PlantUML",
+                _ => "diagram",
+            };
             renderer.Write("<div class=\"readmd-d2-slot\" data-readmd-key=\"")
                 .Write(request.Key)
-                .Write("\"><div class=\"readmd-diagram-placeholder\">Rendering D2 diagram…</div></div>");
+                .Write("\"><div class=\"readmd-diagram-placeholder\">Rendering ")
+                .Write(label)
+                .Write(" diagram…</div></div>");
         }
 
         renderer.Write("</figure>");

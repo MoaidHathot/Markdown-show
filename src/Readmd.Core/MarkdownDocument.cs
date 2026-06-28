@@ -7,6 +7,8 @@ public enum DiagramKind
 {
     Mermaid,
     D2,
+    Graphviz,
+    PlantUml,
 }
 
 /// <summary>

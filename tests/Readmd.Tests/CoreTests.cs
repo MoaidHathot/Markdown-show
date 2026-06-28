@@ -33,6 +33,34 @@ public class CoreTests
         Assert.Contains(doc.Diagrams, d => d.Kind == DiagramKind.Mermaid);
     }
 
+    [Theory]
+    [InlineData("d2", DiagramKind.D2)]
+    [InlineData("graphviz", DiagramKind.Graphviz)]
+    [InlineData("dot", DiagramKind.Graphviz)]
+    [InlineData("plantuml", DiagramKind.PlantUml)]
+    [InlineData("puml", DiagramKind.PlantUml)]
+    public void Fenced_languages_map_to_diagram_kinds(string lang, DiagramKind expected)
+    {
+        Assert.Equal(expected, DiagramExtractor.MapKind(lang));
+    }
+
+    [Fact]
+    public void Graphviz_and_plantuml_blocks_are_collected_as_diagrams()
+    {
+        var md = "```dot\ndigraph { a -> b }\n```\n\n```plantuml\n@startuml\nA -> B\n@enduml\n```\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Contains(doc.Diagrams, d => d.Kind == DiagramKind.Graphviz);
+        Assert.Contains(doc.Diagrams, d => d.Kind == DiagramKind.PlantUml);
+    }
+
+    [Fact]
+    public void Plain_code_block_is_not_a_diagram()
+    {
+        Assert.Null(DiagramExtractor.MapKind("csharp"));
+        Assert.Null(DiagramExtractor.MapKind(""));
+        Assert.Null(DiagramExtractor.MapKind(null));
+    }
+
     [Fact]
     public void Front_matter_title_overrides_first_heading()
     {
