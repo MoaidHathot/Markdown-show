@@ -7,7 +7,7 @@ dnx readmd report.md                 # view in the terminal (TUI)
 dnx readmd report.md --browser       # view in the browser (full fidelity)
 ```
 
-> Requires the **.NET 10 SDK** (for `dnx`). `d2` on your `PATH` is needed for D2 diagrams; the headless browser used for mermaid is downloaded automatically on first use.
+> Requires the **.NET 10 SDK** (for `dnx`). `d2` on your `PATH` is needed for D2 diagrams. For mermaid, readmd uses a local `mmdc` (mermaid-cli) if it's installed; otherwise it downloads a headless browser automatically on first use.
 
 ## Features
 
@@ -176,7 +176,7 @@ Inline diagrams in the terminal use the **Sixel** graphics protocol. Supported t
 
 `readmd` targets .NET 10 and is cross-platform (Windows, macOS, Linux). Mouse support — **wheel scrolling, click-to-follow-link, and drag-select in `m` mark mode** — works on all three: Windows uses the console API, while macOS/Linux use SGR mouse reporting (with the terminal put in raw mode via `termios`). Every keybinding works on all platforms, and the browser front-end is identical everywhere.
 
-> The first mermaid diagram triggers a one-time headless-browser (Chromium) download via Playwright, which can be large and may take a moment. Use `--best-effort` to skip it (mermaid then opens in your browser on demand). D2 requires the `d2` binary on your `PATH` (or `--d2-path`); if it's missing, the diagram area shows an actionable message.
+> **Mermaid rendering:** if a local `mmdc` (mermaid-cli, `npm i -g @mermaid-js/mermaid-cli`) is on your `PATH` — or set via `mermaidCliPath` in config — readmd uses it and skips its own browser download entirely. Otherwise the first mermaid diagram triggers a one-time headless-browser (Chromium) download via Playwright, which can be large; use `--best-effort` to skip it (mermaid then opens in your browser on demand). D2 requires the `d2` binary on your `PATH` (or `--d2-path`); if it's missing, the diagram area shows an actionable message.
 
 ## Building from source
 

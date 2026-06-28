@@ -148,6 +148,7 @@ root.SetAction(async (parse, ct) =>
     {
         BestEffort = bestEffort,
         D2Path = d2Path,
+        MermaidCliPath = config.MermaidCliPath,
     });
 
     // Non-interactive modes: stdin always prints; a redirected stdout implies --print.
