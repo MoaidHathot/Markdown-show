@@ -26,11 +26,12 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
 
     public sealed record RenderResult(IReadOnlyList<DisplayLine> Lines, IReadOnlyList<TerminalLink> Links);
 
-    public RenderResult Render(MarkdownObject document, IReadOnlyList<TocEntry>? toc = null)
+    public RenderResult Render(MarkdownObject document, IReadOnlyList<TocEntry>? toc = null, FrontMatter? frontMatter = null)
     {
         _lines.Clear();
         _links.Clear();
         _toc = toc ?? [];
+        RenderFrontMatterHeader(frontMatter);
         if (document is ContainerBlock container)
         {
             foreach (var block in container)
@@ -38,6 +39,47 @@ public sealed partial class MarkdownTerminalRenderer(TerminalTheme theme, int wi
         }
         TrimTrailingBlank();
         return new RenderResult(_lines, _links);
+    }
+
+    // Renders a compact metadata header (title/subtitle/author·date/tags) from YAML front matter.
+    // Emits nothing when there's no recognized metadata, so plain documents look unchanged.
+    private void RenderFrontMatterHeader(FrontMatter? fm)
+    {
+        if (fm is null || fm.IsEmpty) return;
+        var title = fm.Get("title");
+        var subtitle = fm.Get("subtitle") ?? fm.Get("description");
+        var author = fm.Get("author") ?? fm.Get("authors");
+        var date = fm.Get("date");
+        var tags = fm.GetList("tags") ?? fm.GetList("keywords");
+
+        var hasAny = !string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(subtitle)
+                     || !string.IsNullOrWhiteSpace(author) || !string.IsNullOrWhiteSpace(date)
+                     || tags is { Count: > 0 };
+        if (!hasAny) return;
+
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            var line = new DisplayLine { LineBackground = theme.BackgroundElevated };
+            line.Spans.Add(new StyledSpan("  ", null, CellStyle.None, null, theme.BackgroundElevated));
+            line.Spans.Add(new StyledSpan(title, theme.H1, CellStyle.Bold, null, theme.BackgroundElevated));
+            _lines.Add(line);
+        }
+        if (!string.IsNullOrWhiteSpace(subtitle))
+            EmitWrapped([new StyledSpan(subtitle, theme.Muted, CellStyle.Italic)], 0);
+
+        var meta = new List<string>();
+        if (!string.IsNullOrWhiteSpace(author)) meta.Add(author);
+        if (!string.IsNullOrWhiteSpace(date)) meta.Add(date);
+        if (meta.Count > 0)
+            EmitWrapped([new StyledSpan(string.Join("  ·  ", meta), theme.Muted)], 0);
+
+        if (tags is { Count: > 0 })
+            EmitWrapped([new StyledSpan(string.Join("  ", tags.Select(t => $"#{t}")), theme.Accent)], 0);
+
+        var rule = new DisplayLine();
+        rule.Spans.Add(new StyledSpan(new string('─', Math.Max(8, _width - 1)), theme.Rule));
+        _lines.Add(rule);
+        AddBlank();
     }
 
     private void RenderBlock(Block block, int indent)

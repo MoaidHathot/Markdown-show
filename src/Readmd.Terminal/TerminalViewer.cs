@@ -181,7 +181,7 @@ public sealed partial class TerminalViewer : IAsyncDisposable
         var doc = _markdown.Parse(path, markdown);
         var mdAst = Markdig.Markdown.Parse(markdown, BuildPipeline());
         var renderer = new MarkdownTerminalRenderer(_theme, _screen.Width - 1);
-        var result = renderer.Render(mdAst, doc.Toc);
+        var result = renderer.Render(mdAst, doc.Toc, doc.FrontMatter);
         return new ParsedDoc(result.Lines, result.Links, doc.Toc, doc.Title, renderer.PendingDiagrams, renderer.PendingImages, renderer.PendingImageGroups);
     }
 

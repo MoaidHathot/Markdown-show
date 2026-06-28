@@ -32,6 +32,52 @@ public class CoreTests
         var doc = new MarkdownRenderer().Parse("doc.md", md);
         Assert.Contains(doc.Diagrams, d => d.Kind == DiagramKind.Mermaid);
     }
+
+    [Fact]
+    public void Front_matter_title_overrides_first_heading()
+    {
+        var md = "---\ntitle: From Front Matter\n---\n\n# A Different Heading\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Equal("From Front Matter", doc.Title);
+    }
+
+    [Fact]
+    public void Front_matter_is_parsed_into_scalars_and_lists()
+    {
+        var md = "---\ntitle: Report\nauthor: Jane Smith\ntags: [a, b, c]\n---\n\n# Body\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Equal("Report", doc.FrontMatter.Get("title"));
+        Assert.Equal("Jane Smith", doc.FrontMatter.Get("author"));
+        Assert.Equal(new[] { "a", "b", "c" }, doc.FrontMatter.GetList("tags"));
+    }
+
+    [Fact]
+    public void Front_matter_metadata_header_is_emitted_in_html()
+    {
+        var md = "---\ntitle: Report\nauthor: Jane\n---\n\n# Body\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.Contains("readmd-frontmatter", doc.Html);
+        Assert.Contains("Jane", doc.Html);
+    }
+
+    [Fact]
+    public void Document_without_front_matter_has_empty_front_matter_and_no_header()
+    {
+        var md = "# Title\n\nBody.\n";
+        var doc = new MarkdownRenderer().Parse("doc.md", md);
+        Assert.True(doc.FrontMatter.IsEmpty);
+        Assert.DoesNotContain("readmd-frontmatter", doc.Html);
+    }
+
+    [Theory]
+    [InlineData("key: \"quoted value\"", "key", "quoted value")]
+    [InlineData("key: 'single quoted'", "key", "single quoted")]
+    [InlineData("url: https://example.com:8080/x", "url", "https://example.com:8080/x")]
+    public void Front_matter_parses_scalars(string line, string key, string expected)
+    {
+        var fm = FrontMatter.Parse(line);
+        Assert.Equal(expected, fm.Get(key));
+    }
 }
 
 public class LinkResolverTests
