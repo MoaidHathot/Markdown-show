@@ -4,10 +4,13 @@ using Readmd.Core;
 namespace Readmd.Diagrams;
 
 /// <summary>
-/// Renders mermaid diagrams by shelling out to a local <c>mmdc</c> (mermaid-cli) that produces SVG,
-/// which is then rasterized to PNG in-process. This is a lighter alternative to the bundled
-/// Playwright/Chromium path: when <c>mmdc</c> is on PATH (or configured), no headless browser
-/// download is needed.
+/// Renders mermaid diagrams by shelling out to a local <c>mmdc</c> (mermaid-cli), which uses its
+/// own bundled headless browser to produce a PNG. This is a lighter alternative to readmd's own
+/// Playwright/Chromium download: when <c>mmdc</c> is on PATH (or configured), no extra browser is
+/// fetched. We let mmdc emit PNG directly (rather than SVG that we'd rasterize in-process) so the
+/// text, label centering, and gantt grid lines are rendered by a real browser and look identical to
+/// the browser front-end — the in-process SVG rasterizer mishandles mermaid's tspan/em positioning
+/// and <c>currentColor</c>.
 /// </summary>
 internal sealed class MermaidCliRenderer
 {
@@ -34,22 +37,22 @@ internal sealed class MermaidCliRenderer
         var dir = Path.Combine(Path.GetTempPath(), "readmd-mmdc", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         var input = Path.Combine(dir, "in.mmd");
-        var output = Path.Combine(dir, "out.svg");
+        var output = Path.Combine(dir, "out.png");
         var configFile = Path.Combine(dir, "config.json");
         try
         {
             await File.WriteAllTextAsync(input, request.Source, ct);
-            // Use native SVG <text> labels (htmlLabels:false): the in-process SVG rasterizer doesn't
-            // render <foreignObject> HTML, so HTML labels would come out blank.
-            await File.WriteAllTextAsync(configFile, MermaidTheme.ConfigJson(theme == DiagramTheme.Dark, htmlLabels: false), ct);
+            // Keep htmlLabels:true — mmdc's browser renders the HTML labels natively, so we get
+            // correctly centered/wrapped text and visible gantt grid lines.
+            await File.WriteAllTextAsync(configFile, MermaidTheme.ConfigJson(theme == DiagramTheme.Dark), ct);
 
             await RunMmdcAsync(input, output, configFile, ct);
             if (!File.Exists(output))
                 return DiagramResult.Fail(request.Key, "mmdc produced no output.");
 
-            var svg = await File.ReadAllTextAsync(output, ct);
-            var png = Rasterizer.SvgToPng(svg, out var width, out var height);
-            return new DiagramResult(request.Key, DiagramStatus.Ready, png, svg, width, height, null);
+            var png = await File.ReadAllBytesAsync(output, ct);
+            var (width, height) = ImageInfo.GetPngSize(png);
+            return new DiagramResult(request.Key, DiagramStatus.Ready, png, null, width, height, null);
         }
         catch (MmdcNotFoundException)
         {
@@ -71,8 +74,10 @@ internal sealed class MermaidCliRenderer
 
     private async Task RunMmdcAsync(string input, string output, string configFile, CancellationToken ct)
     {
+        // -s 2 renders at 2x for crisp text when scaled into the terminal; -b transparent keeps the
+        // diagram background see-through so the theme background shows behind it.
         var psi = ExecutableResolver.Resolve(_mmdcPath,
-            ["-i", input, "-o", output, "-c", configFile, "-b", "transparent"])
+            ["-i", input, "-o", output, "-c", configFile, "-b", "transparent", "-s", "2"])
             ?? throw new MmdcNotFoundException();
 
         using var proc = new Process { StartInfo = psi };

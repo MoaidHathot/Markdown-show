@@ -87,12 +87,17 @@ public class MermaidConfigTests
     }
 
     [Fact]
-    public void Cli_config_disables_html_labels_for_native_text()
+    public void Config_can_request_native_text_labels()
     {
-        // The mmdc path must use native <text> (htmlLabels:false) because the in-process SVG
-        // rasterizer does not render <foreignObject> HTML labels.
         var json = MermaidTheme.ConfigJson(dark: true, htmlLabels: false);
         Assert.Contains("\"htmlLabels\": false", json);
         Assert.DoesNotContain("\"htmlLabels\": true", json);
+    }
+
+    [Fact]
+    public void Config_includes_theme_variables_for_both_modes()
+    {
+        Assert.Contains("darkMode", MermaidTheme.ConfigJson(dark: true));
+        Assert.Contains("darkMode", MermaidTheme.ConfigJson(dark: false));
     }
 }
