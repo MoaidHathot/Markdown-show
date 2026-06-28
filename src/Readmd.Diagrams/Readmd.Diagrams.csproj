@@ -5,6 +5,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Readmd.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="assets\mermaid.min.js" />
   </ItemGroup>
 
