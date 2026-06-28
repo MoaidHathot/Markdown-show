@@ -30,7 +30,7 @@ internal static partial class HtmlLinkRewriter
             if (LinkResolver.IsExternal(src) || src.StartsWith("data:")) return m.Value;
             var link = resolver.Resolve(src, currentFileAbsolutePath);
             if (link.Kind == LinkKind.Image && link.AbsolutePath is not null)
-                return $"src=\"/_mdv/file?path={Uri.EscapeDataString(link.AbsolutePath)}\"";
+                return $"src=\"/_readmd/file?path={Uri.EscapeDataString(link.AbsolutePath)}\"";
             return m.Value;
         });
 

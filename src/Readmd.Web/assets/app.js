@@ -101,7 +101,7 @@ async function renderD2(root) {
     const key = slot.getAttribute("data-readmd-key");
     slot.setAttribute("data-readmd-done", "1");
     try {
-      const resp = await fetch(`/_mdv/diagram/${key}?theme=${currentTheme}&format=svg`);
+      const resp = await fetch(`/_readmd/diagram/${key}?theme=${currentTheme}&format=svg`);
       if (!resp.ok) throw new Error(await resp.text());
       slot.innerHTML = await resp.text();
     } catch (e) {
@@ -271,7 +271,7 @@ document.getElementById("readmd-search-prev").addEventListener("click", () => ne
 async function navigate(path, push = true) {
   showStatus("Loading…");
   try {
-    const resp = await fetch(`/_mdv/doc?path=${encodeURIComponent(path)}`);
+    const resp = await fetch(`/_readmd/doc?path=${encodeURIComponent(path)}`);
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
     morphContent(data.html);
@@ -311,12 +311,12 @@ window.addEventListener("popstate", (e) => {
 // ---------------- live reload via SSE ----------------
 let currentPath = new URLSearchParams(location.search).get("path") || "";
 function connectLiveReload() {
-  const es = new EventSource("/_mdv/events");
+  const es = new EventSource("/_readmd/events");
   es.addEventListener("reload", async (ev) => {
     try {
       const payload = JSON.parse(ev.data);
       if (payload.path && currentPath && normalize(payload.path) !== normalize(currentPath)) return;
-      const resp = await fetch(`/_mdv/doc?path=${encodeURIComponent(currentPath || payload.path)}`);
+      const resp = await fetch(`/_readmd/doc?path=${encodeURIComponent(currentPath || payload.path)}`);
       if (!resp.ok) return;
       const data = await resp.json();
       morphContent(data.html);
@@ -351,7 +351,7 @@ document.getElementById("readmd-theme-toggle").addEventListener("click", async (
   currentTheme = currentTheme === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", currentTheme);
   document.getElementById("hljs-theme").href = currentTheme === "dark"
-    ? "/_mdv/vendor/github-dark.min.css" : "/_mdv/vendor/github.min.css";
+    ? "/_readmd/vendor/github-dark.min.css" : "/_readmd/vendor/github.min.css";
   if (mermaid && mermaid.initialize) {
     mermaid.initialize(mermaidConfig(currentTheme));
   }

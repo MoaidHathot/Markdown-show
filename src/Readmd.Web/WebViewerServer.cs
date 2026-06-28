@@ -85,7 +85,7 @@ public sealed class WebViewerServer : IAsyncDisposable
             await ctx.Response.WriteAsync(shell, ctx.RequestAborted);
         });
 
-        app.MapGet("/_mdv/doc", async (HttpContext ctx) =>
+        app.MapGet("/_readmd/doc", async (HttpContext ctx) =>
         {
             var path = ctx.Request.Query["path"].FirstOrDefault();
             var target = ResolveRequestedPath(path) ?? _currentPath;
@@ -95,7 +95,7 @@ public sealed class WebViewerServer : IAsyncDisposable
             await ctx.Response.WriteAsync(JsonSerializer.Serialize(new { title = doc.Title, html = doc.Html }), ctx.RequestAborted);
         });
 
-        app.MapGet("/_mdv/diagram/{key}", async (HttpContext ctx, string key) =>
+        app.MapGet("/_readmd/diagram/{key}", async (HttpContext ctx, string key) =>
         {
             var themeStr = ctx.Request.Query["theme"].FirstOrDefault();
             var theme = string.Equals(themeStr, "light", StringComparison.OrdinalIgnoreCase) ? DiagramTheme.Light : DiagramTheme.Dark;
@@ -124,7 +124,7 @@ public sealed class WebViewerServer : IAsyncDisposable
             else { ctx.Response.StatusCode = 404; }
         });
 
-        app.MapGet("/_mdv/file", async (HttpContext ctx) =>
+        app.MapGet("/_readmd/file", async (HttpContext ctx) =>
         {
             var path = ctx.Request.Query["path"].FirstOrDefault();
             if (string.IsNullOrEmpty(path)) { ctx.Response.StatusCode = 400; return; }
@@ -134,7 +134,7 @@ public sealed class WebViewerServer : IAsyncDisposable
             await ctx.Response.SendFileAsync(full, ctx.RequestAborted);
         });
 
-        app.MapGet("/_mdv/events", async (HttpContext ctx) =>
+        app.MapGet("/_readmd/events", async (HttpContext ctx) =>
         {
             ctx.Response.Headers.CacheControl = "no-cache";
             ctx.Response.Headers.ContentType = "text/event-stream";
@@ -157,8 +157,8 @@ public sealed class WebViewerServer : IAsyncDisposable
             finally { _clients.TryRemove(id, out _); }
         });
 
-        // Static assets: /_mdv/app.js, /_mdv/app.css, /_mdv/vendor/*, /_mdv/vendor/fonts/*
-        app.MapGet("/_mdv/{**rest}", async (HttpContext ctx, string rest) =>
+        // Static assets: /_readmd/app.js, /_readmd/app.css, /_readmd/vendor/*, /_readmd/vendor/fonts/*
+        app.MapGet("/_readmd/{**rest}", async (HttpContext ctx, string rest) =>
         {
             var bytes = WebAssets.TryReadBytes(rest);
             if (bytes is null) { ctx.Response.StatusCode = 404; return; }
