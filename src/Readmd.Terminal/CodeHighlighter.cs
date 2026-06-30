@@ -12,8 +12,8 @@ public static class CodeHighlighter
 {
     private static readonly object Sync = new();
     private static RegistryOptions? _options;
-    private static Registry? _registry;          // dark (DarkPlus) — also used for grammar lookup
-    private static Registry? _lightRegistry;     // light (LightPlus) — for color resolution on light themes
+    private static Registry? _darkRegistry;
+    private static Registry? _lightRegistry;
     private static readonly Dictionary<string, IGrammar?> GrammarCache = new(StringComparer.OrdinalIgnoreCase);
 
     public static List<List<StyledSpan>> Highlight(string code, string language, TerminalTheme theme)
@@ -56,10 +56,9 @@ public static class CodeHighlighter
 
     private static Rgb? ResolveColor(List<string> scopes, TerminalTheme theme)
     {
-        EnsureInit();
-        // Use the theme that matches the terminal background so code stays legible: DarkPlus colors
-        // are designed for dark backgrounds and wash out on light, and vice versa.
-        var registry = theme.IsDark ? _registry : (_lightRegistry ?? _registry);
+        // Use the registry whose theme matches the terminal background so code stays legible:
+        // DarkPlus colors are designed for dark backgrounds and wash out on light, and vice versa.
+        var registry = RegistryFor(theme.IsDark);
         if (registry is null) return null;
 
         var themeManager = registry.GetTheme();
@@ -78,8 +77,8 @@ public static class CodeHighlighter
 
     private static IGrammar? GetGrammar(string language)
     {
-        EnsureInit();
-        if (_options is null || _registry is null) return null;
+        var registry = RegistryFor(true) ?? RegistryFor(false); // grammars are theme-independent
+        if (_options is null || registry is null) return null;
         language = NormalizeLanguage(language);
         if (string.IsNullOrEmpty(language)) return null;
 
@@ -96,7 +95,7 @@ public static class CodeHighlighter
                 if (lang is not null)
                 {
                     var scope = _options.GetScopeByLanguageId(lang.Id);
-                    if (scope is not null) grammar = _registry.LoadGrammar(scope);
+                    if (scope is not null) grammar = registry.LoadGrammar(scope);
                 }
             }
             catch { grammar = null; }
@@ -121,18 +120,23 @@ public static class CodeHighlighter
         };
     }
 
-    private static void EnsureInit()
+    // Returns the registry for the requested theme, building it on first use. Only the theme actually
+    // used is constructed — a single-theme run never pays to build the other registry; the other is
+    // created lazily if the user toggles theme in the viewer.
+    //
+    // Grammars are theme-independent, so all grammar/scope lookups go through one shared RegistryOptions
+    // (_options). Each Registry, however, must carry its own theme so GetTheme() resolves the right colors.
+    private static Registry? RegistryFor(bool dark)
     {
-        if (_registry is not null) return;
+        var existing = dark ? _darkRegistry : _lightRegistry;
+        if (existing is not null) return existing;
         lock (Sync)
         {
-            if (_registry is not null) return;
-            var options = new RegistryOptions(ThemeName.DarkPlus);
-            _registry = new Registry(options);
-            _options = options;
-            // A second registry with the light theme for color resolution on light terminals.
-            try { _lightRegistry = new Registry(new RegistryOptions(ThemeName.LightPlus)); }
-            catch { _lightRegistry = null; }
+            // Shared options for grammar lookup; its theme is irrelevant (grammars don't vary by theme).
+            _options ??= new RegistryOptions(dark ? ThemeName.DarkPlus : ThemeName.LightPlus);
+            return dark
+                ? _darkRegistry ??= new Registry(new RegistryOptions(ThemeName.DarkPlus))
+                : _lightRegistry ??= new Registry(new RegistryOptions(ThemeName.LightPlus));
         }
     }
 }
