@@ -31,6 +31,16 @@ jobs:
       - name: Install mermaid-cli
         run: npm install -g @mermaid-js/mermaid-cli
 
+      # mermaid-cli (Puppeteer) needs a Chrome headless-shell binary; the global npm install does not
+      # always fetch one. mermaid-cli v11 launches with headless:'shell' (Puppeteer >=22 -> the
+      # chrome-headless-shell package), so install exactly that, into a cache dir mmdc reads via
+      # PUPPETEER_CACHE_DIR. Pin the Puppeteer major to mermaid-cli's (^23) so the browser buildId
+      # matches what mmdc expects. This makes the mermaid regression tests run on CI, not skip.
+      - name: Install Puppeteer browser for mermaid-cli
+        run: npx --yes puppeteer@23 browsers install chrome-headless-shell
+        env:
+          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/puppeteer
+
       - name: Restore
         run: dotnet restore Readmd.slnx
 
@@ -39,6 +49,8 @@ jobs:
 
       - name: Test
         run: dotnet test tests/Readmd.Tests/Readmd.Tests.csproj --configuration Release --no-build --verbosity normal
+        env:
+          PUPPETEER_CACHE_DIR: ${{ runner.temp }}/puppeteer
 
   pack:
     name: Pack tool
