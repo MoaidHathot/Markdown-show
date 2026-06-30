@@ -9,8 +9,11 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>readmd</ToolCommandName>
     <PackageId>readmd</PackageId>
-    <Version>0.3.0</Version>
-    <InformationalVersion>0.3.0</InformationalVersion>
+    <Version>0.4.0</Version>
+    <InformationalVersion>0.4.0</InformationalVersion>
+    <!-- Keep the version line clean ("readmd 0.4.0"): don't let SourceLink append a +commit suffix
+         to the informational version, which Program.cs reads for the branded version output. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>MoaidHathot</Authors>
     <Title>readmd — terminal Markdown viewer</Title>
     <Description>A terminal-first, feature-rich Markdown viewer with live reload, search, [[_TOC_]], mermaid and D2 diagrams, and an optional browser mode.</Description>
