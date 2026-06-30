@@ -44,6 +44,14 @@ jobs:
           node "$MMDC_DIR/node_modules/puppeteer/lib/cjs/puppeteer/node/cli.js" \
             browsers install chrome-headless-shell
 
+      # GitHub's Ubuntu runners (23.10+) restrict unprivileged user namespaces via AppArmor, which
+      # makes Chromium's sandbox abort with "No usable sandbox!" - so mmdc can't launch its browser.
+      # Relax that restriction on the runner (a throwaway CI VM) so the mermaid tests can actually
+      # render, instead of weakening the sandbox in the product itself.
+      - name: Allow Chromium sandbox on Ubuntu runner
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Restore
         run: dotnet restore Readmd.slnx
 
