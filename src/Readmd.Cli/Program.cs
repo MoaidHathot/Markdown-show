@@ -307,7 +307,7 @@ static async Task<int> RunExportAsync(string full, bool fromStdin, string export
                         "Tip: `readmd install-pdf` downloads the browser once Node.js is available.");
                 return 1;
             }
-            var pdf = await PdfRenderer.RenderAsync(html, ct);
+            var pdf = await PdfRenderer.RenderAsync(html, ct: ct);
             await File.WriteAllBytesAsync(outFull, pdf, ct);
         }
         else

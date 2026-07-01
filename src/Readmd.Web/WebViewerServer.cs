@@ -151,7 +151,7 @@ public sealed class WebViewerServer : IAsyncDisposable
                 var html = await HtmlExporter.ExportAsync(target, _diagrams, _options.Theme, ctx.RequestAborted);
                 if (format == "pdf")
                 {
-                    var pdf = await PdfRenderer.RenderAsync(html, ctx.RequestAborted);
+                    var pdf = await PdfRenderer.RenderAsync(html, ct: ctx.RequestAborted);
                     ctx.Response.ContentType = "application/pdf";
                     ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"{SanitizeFileName(baseName)}.pdf\"";
                     await ctx.Response.Body.WriteAsync(pdf, ctx.RequestAborted);
