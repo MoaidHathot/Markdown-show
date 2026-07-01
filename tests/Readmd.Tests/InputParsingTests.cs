@@ -66,6 +66,22 @@ public class InputParsingTests
     }
 
     [Fact]
+    public void Sgr_ctrl_left_click_sets_ctrl_modifier()
+    {
+        // The Ctrl modifier is bit 0x10, so a Ctrl+left-click button code is 0 | 16 = 16.
+        // Ctrl+click opens links without the confirmation prompt.
+        var plain = Assert.Single(Parse("\e[<0;12;7M"));
+        Assert.Equal(KeyKind.MouseClick, plain.Kind);
+        Assert.False(plain.Ctrl);
+
+        var ctrl = Assert.Single(Parse("\e[<16;12;7M"));
+        Assert.Equal(KeyKind.MouseClick, ctrl.Kind);
+        Assert.True(ctrl.Ctrl);
+        Assert.Equal(11, ctrl.MouseCol);
+        Assert.Equal(6, ctrl.MouseRow);
+    }
+
+    [Fact]
     public void Sgr_mouse_right_click_is_decoded()
     {
         var evs = Parse("\e[<2;3;4M");

@@ -64,29 +64,70 @@ public static class PdfRenderer
             // Give client-side mermaid/KaTeX a moment to finish rendering before measuring/snapshotting.
             await page.WaitForTimeoutAsync(400);
 
-            // Paint the page background (the theme's --bg) behind the whole PDF, and neutralise any
-            // fixed content max-width so the document uses the full page width we chose.
+            // Prepare the DOM for a single-page, un-clipped capture:
+            //  - paint the theme background behind the whole page,
+            //  - drop the content max-width so it can be as wide as its widest element,
+            //  - un-clip horizontally-scrolling blocks (wide tables and code use overflow:auto,
+            //    which would crop in a static PDF) and let tables size to their natural width.
+            // The page is grown to fit afterwards, so nothing is cut off.
             await page.EvaluateAsync(@"() => {
                 const de = document.documentElement, body = document.body;
                 const bg = getComputedStyle(body).backgroundColor;
-                if (bg) { de.style.background = bg; }
+                if (bg) de.style.background = bg;
                 de.style.margin = '0'; body.style.margin = '0';
-            }");
 
-            // Measure the full rendered content size so the PDF is one continuous page with no
-            // A4 pagination or cropping.
+                const content = document.getElementById('readmd-content');
+                if (content) { content.style.maxWidth = 'none'; content.style.width = 'max-content'; }
+
+                // Wide tables render as display:block;overflow:auto on screen (so they scroll); in a
+                // PDF that clips. Make them lay out fully instead.
+                document.querySelectorAll('#readmd-content table').forEach(t => {
+                    t.style.display = 'table';
+                    t.style.width = 'auto';
+                    t.style.maxWidth = 'none';
+                    t.style.overflow = 'visible';
+                });
+                document.querySelectorAll('#readmd-content pre').forEach(p => {
+                    p.style.overflow = 'visible';
+                });
+                // Wrapping cell text isn't cropped, but keep cells from forcing absurd widths.
+                document.querySelectorAll('#readmd-content td, #readmd-content th').forEach(c => {
+                    c.style.whiteSpace = 'normal';
+                });
+            }");
+            // Let the browser reflow after the style changes.
+            await page.WaitForTimeoutAsync(50);
+
+            // Measure the full rendered content size (including any element that overflows the body)
+            // so the PDF is one continuous page that fits everything with no A4 pagination or cropping.
             var fullHeight = await page.EvaluateAsync<double>(@"() => {
                 const b = document.body, e = document.documentElement;
-                return Math.ceil(Math.max(
-                    b.scrollHeight, e.scrollHeight, b.offsetHeight, e.offsetHeight));
+                let h = Math.max(b.scrollHeight, e.scrollHeight, b.offsetHeight, e.offsetHeight);
+                // Account for any child that extends past the body (defensive).
+                document.querySelectorAll('#readmd-content *').forEach(el => {
+                    const r = el.getBoundingClientRect();
+                    if (r.bottom > h) h = r.bottom;
+                });
+                return Math.ceil(h);
             }");
             var fullWidth = await page.EvaluateAsync<double>(@"() => {
                 const b = document.body, e = document.documentElement;
-                return Math.ceil(Math.max(b.scrollWidth, e.scrollWidth));
+                let w = Math.max(b.scrollWidth, e.scrollWidth, b.offsetWidth, e.offsetWidth);
+                // Widest element wins, so a wide table isn't cropped even if it overflows the body.
+                document.querySelectorAll('#readmd-content *').forEach(el => {
+                    if (el.scrollWidth) {
+                        const r = el.getBoundingClientRect();
+                        const right = r.left + el.scrollWidth;
+                        if (right > w) w = right;
+                    }
+                });
+                return Math.ceil(w);
             }");
 
-            int pageW = Math.Max(width, (int)Math.Ceiling(fullWidth));
-            int pageH = Math.Max(1, (int)Math.Ceiling(fullHeight));
+            // Add a small buffer so sub-pixel rounding in Chromium's paginator doesn't spill a
+            // sliver onto a second page — we want exactly one continuous page.
+            int pageW = Math.Max(width, (int)Math.Ceiling(fullWidth)) + 2;
+            int pageH = Math.Max(1, (int)Math.Ceiling(fullHeight)) + 2;
 
             return await page.PdfAsync(new PagePdfOptions
             {

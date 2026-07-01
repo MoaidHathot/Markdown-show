@@ -275,7 +275,7 @@ public sealed partial class TerminalViewer
             case KeyKind.MouseScrollUp: ScrollBy(-1); return;
             case KeyKind.MouseScrollDown: ScrollBy(1); return;
             case KeyKind.MouseClick when _selectionMode: SelectionBegin(key.MouseRow, key.MouseCol); return;
-            case KeyKind.MouseClick: HandleClick(key.MouseRow, key.MouseCol); return;
+            case KeyKind.MouseClick: HandleClick(key.MouseRow, key.MouseCol, ctrl: key.Ctrl); return;
             case KeyKind.MouseDrag when _selectionMode: SelectionExtend(key.MouseRow, key.MouseCol); return;
             case KeyKind.MouseDragEnd when _selectionMode: SelectionExtend(key.MouseRow, key.MouseCol); return;
             case KeyKind.MouseRightClick when _selectionMode: CopySelection(); return;
@@ -542,7 +542,7 @@ public sealed partial class TerminalViewer
     /// Handles a left mouse click at the given screen row/col: if it lands on a link, follow it;
     /// if it lands on a TOC heading in the overlay it's handled there. Coordinates are 0-based.
     /// </summary>
-    private void HandleClick(int screenRow, int screenCol)
+    private void HandleClick(int screenRow, int screenCol, bool ctrl = false)
     {
         if (_helpMode) { _helpMode = false; _dirty = true; return; }
         if (_tocMode) return; // overlay is keyboard-driven
@@ -564,7 +564,7 @@ public sealed partial class TerminalViewer
             {
                 if (span.LinkId is { } id && id >= 0 && id < _links.Count)
                 {
-                    FollowLink(_links[id]);
+                    FollowLink(_links[id], bypassConfirm: ctrl);
                     return;
                 }
                 break;
@@ -577,7 +577,7 @@ public sealed partial class TerminalViewer
         var anchor = AnchorForRow(lineIndex);
         if (anchor?.ImageLinkId is { } imgLink && imgLink >= 0 && imgLink < _links.Count)
         {
-            FollowLink(_links[imgLink]);
+            FollowLink(_links[imgLink], bypassConfirm: ctrl);
         }
     }
 
@@ -598,16 +598,25 @@ public sealed partial class TerminalViewer
         return null;
     }
 
-    private void FollowLink(TerminalLink link)
+    private void FollowLink(TerminalLink link, bool bypassConfirm = false)
     {
         var resolved = _resolver.Resolve(link.Url, _currentPath);
         switch (resolved.Kind)
         {
             case LinkKind.External:
+                if (bypassConfirm)
+                {
+                    // Ctrl+click (or another explicit gesture) is a deliberate action, so open the
+                    // link straight away without the confirmation prompt.
+                    OpenUrl(link.Url);
+                    SetStatus("Opened: " + link.Url);
+                    _dirty = true;
+                    break;
+                }
                 // Opening an external URL launches the system browser / handler. Confirm first so a
                 // crafted link in (possibly untrusted) Markdown can't silently open arbitrary sites.
                 _pendingExternalUrl = link.Url;
-                SetStatus($"Open external link? {Truncate(link.Url, 60)}   [y / N]", 30);
+                SetStatus($"Open external link? {Truncate(link.Url, 60)}   [y / N]   (Ctrl+click to skip)", 30);
                 _dirty = true;
                 break;
             case LinkKind.LocalFile when resolved.AbsolutePath is not null:

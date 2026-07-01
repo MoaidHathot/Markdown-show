@@ -234,7 +234,7 @@ internal static class KeyReader
         return button switch
         {
             2 => new KeyEvent(KeyKind.MouseRightClick, MouseRow: row, MouseCol: col),
-            0 => new KeyEvent(KeyKind.MouseClick, MouseRow: row, MouseCol: col),
+            0 => new KeyEvent(KeyKind.MouseClick, MouseRow: row, MouseCol: col, Ctrl: ctrl),
             _ => null, // middle button: ignore
         };
     }
@@ -343,6 +343,7 @@ internal static class KeyReader
         bool leftBefore = (_prevButtonState & FROM_LEFT_1ST_BUTTON) != 0;
         bool rightNow = (me.dwButtonState & RIGHTMOST_BUTTON) != 0;
         bool rightBefore = (_prevButtonState & RIGHTMOST_BUTTON) != 0;
+        bool ctrlDown = (me.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
         int row = me.dwMousePosition.Y, colPos = me.dwMousePosition.X;
         _prevButtonState = me.dwButtonState;
 
@@ -361,9 +362,10 @@ internal static class KeyReader
                 return new KeyEvent(KeyKind.MouseRightClick, MouseRow: row, MouseCol: colPos);
 
             // Left-button down edge → a click (follows links in normal mode; starts a drag
-            // selection in mark mode — the viewer decides based on its current mode).
+            // selection in mark mode — the viewer decides based on its current mode). Ctrl is
+            // carried so Ctrl+click can open a link without the confirmation prompt.
             if (leftNow && !leftBefore)
-                return new KeyEvent(KeyKind.MouseClick, MouseRow: row, MouseCol: colPos);
+                return new KeyEvent(KeyKind.MouseClick, MouseRow: row, MouseCol: colPos, Ctrl: ctrlDown);
 
             // Left-button up edge → end of a drag.
             if (!leftNow && leftBefore)
