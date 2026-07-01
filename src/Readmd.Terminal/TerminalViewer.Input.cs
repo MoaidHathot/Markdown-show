@@ -223,7 +223,14 @@ public sealed partial class TerminalViewer
         if (_tocMode) { HandleTocKey(key); return; }
         if (_pendingExternalUrl is not null)
         {
-            // Awaiting confirmation to open a remote link.
+            // Awaiting confirmation to open a remote link. Only respond to keyboard keys — mouse
+            // events (notably the button-release that follows a click that opened this prompt, plus
+            // moves/scrolls) must not count as an answer, or clicking a link could never be
+            // confirmed because its own release would immediately cancel the prompt.
+            if (key.Kind is KeyKind.MouseClick or KeyKind.MouseDrag or KeyKind.MouseDragEnd
+                or KeyKind.MouseRightClick or KeyKind.MouseScrollUp or KeyKind.MouseScrollDown)
+                return;
+
             char c = key.Kind == KeyKind.Char ? char.ToLowerInvariant(key.Char) : '\0';
             var url = _pendingExternalUrl;
             _pendingExternalUrl = null;
@@ -546,12 +553,14 @@ public sealed partial class TerminalViewer
         if (lineIndex < 0 || lineIndex >= _lines.Count) return;
         var line = _lines[lineIndex];
 
-        // 1) Click directly on a link span (text links and clickable image captions).
+        // 1) Click directly on a link span (text links and clickable image captions). Columns are
+        //    measured in display width (wide/emoji glyphs occupy two cells), matching how the line is
+        //    drawn, so hit-testing lines up with what the user sees.
         int col = 0;
         foreach (var span in line.Spans)
         {
-            int len = span.Text.Length;
-            if (screenCol >= col && screenCol < col + len)
+            int w = TextWidth.Of(span.Text);
+            if (screenCol >= col && screenCol < col + w)
             {
                 if (span.LinkId is { } id && id >= 0 && id < _links.Count)
                 {
@@ -560,7 +569,7 @@ public sealed partial class TerminalViewer
                 }
                 break;
             }
-            col += len;
+            col += w;
         }
 
         // 2) Click on a clickable image's rendered area: the anchor line carries ImageLinkId and the

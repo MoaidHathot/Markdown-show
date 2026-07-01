@@ -44,6 +44,25 @@ internal static class TextWidth
         while (e.MoveNext()) yield return (string)e.Current;
     }
 
+    /// <summary>
+    /// Returns the longest prefix of <paramref name="s"/> whose display width does not exceed
+    /// <paramref name="maxWidth"/>, cutting on grapheme boundaries so a wide glyph is never split.
+    /// </summary>
+    public static string TrimToWidth(string s, int maxWidth)
+    {
+        if (maxWidth <= 0 || string.IsNullOrEmpty(s)) return "";
+        int width = 0;
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var g in Graphemes(s))
+        {
+            int gw = ElementWidth(g);
+            if (width + gw > maxWidth) break;
+            sb.Append(g);
+            width += gw;
+        }
+        return sb.ToString();
+    }
+
     private static bool IsZeroWidth(int cp) =>
         cp == 0x200B ||                              // zero-width space
         cp == 0x200D ||                              // zero-width joiner

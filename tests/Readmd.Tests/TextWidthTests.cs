@@ -45,6 +45,26 @@ public class TextWidthTests
         Assert.Equal(1, TextWidth.Of("e\u0301"));
     }
 
+    [Theory]
+    [InlineData("hello", 3, "hel")]
+    [InlineData("hello", 0, "")]
+    [InlineData("hello", 10, "hello")]
+    public void TrimToWidth_cuts_ascii_by_columns(string s, int max, string expected)
+    {
+        Assert.Equal(expected, TextWidth.TrimToWidth(s, max));
+    }
+
+    [Fact]
+    public void TrimToWidth_never_splits_a_wide_glyph()
+    {
+        // "日" is 2 cells. Trimming to width 1 must drop it entirely (not emit half a glyph),
+        // and the resulting display width must never exceed the requested maximum.
+        Assert.Equal("", TextWidth.TrimToWidth("日本", 1));
+        Assert.Equal("日", TextWidth.TrimToWidth("日本", 2));
+        Assert.Equal("日", TextWidth.TrimToWidth("日本", 3)); // can't fit the 2nd wide glyph in 1 leftover cell
+        Assert.True(TextWidth.Of(TextWidth.TrimToWidth("🚀🚀🚀", 5)) <= 5);
+    }
+
     [Fact]
     public void Table_with_check_marks_keeps_columns_aligned()
     {

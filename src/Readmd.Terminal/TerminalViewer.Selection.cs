@@ -21,9 +21,10 @@ public sealed partial class TerminalViewer
     {
         var selBg = _theme.IsDark ? new Rgb(38, 79, 120) : new Rgb(173, 214, 255); // selection blue
         var baseBg = span.Background ?? (_solidBackground ? _theme.Background : (Rgb?)null);
-        foreach (var ch in text)
+        foreach (var ch in TextWidth.Graphemes(text))
         {
-            if (col >= width) break;
+            int gw = TextWidth.ElementWidth(ch);
+            if (col + gw > width) break;
             _screen.Reset();
             if (IsSelected(lineIndex, col))
             {
@@ -36,8 +37,8 @@ public sealed partial class TerminalViewer
                 _screen.SetForeground(span.Color ?? _theme.Text);
                 if (span.Style != CellStyle.None) _screen.SetStyle(span.Style);
             }
-            _screen.Write(ch.ToString());
-            col++;
+            _screen.Write(ch);
+            col += gw;
         }
     }
 

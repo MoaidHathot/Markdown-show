@@ -288,7 +288,10 @@ public sealed partial class TerminalViewer
         {
             if (col >= width) break;
             var text = span.Text;
-            if (col + text.Length > width) text = text[..Math.Max(0, width - col)];
+            // Clip by display width so wide/emoji glyphs (which occupy two terminal cells) don't
+            // overrun the viewport, and so `col` stays aligned with the real terminal cursor.
+            int spanWidth = TextWidth.Of(text);
+            if (col + spanWidth > width) { text = TextWidth.TrimToWidth(text, Math.Max(0, width - col)); spanWidth = TextWidth.Of(text); }
 
             // Search highlight?
             if (_searchHits.Count > 0 && SpanHasHit(lineIndex))
@@ -312,7 +315,7 @@ public sealed partial class TerminalViewer
             else _screen.SetForeground(_theme.Text);
             if (span.Style != CellStyle.None) _screen.SetStyle(span.Style);
             _screen.Write(text);
-            col += text.Length;
+            col += spanWidth;
         }
 
         // Pad the rest of a backgrounded line so the block fills the full width.
@@ -329,12 +332,14 @@ public sealed partial class TerminalViewer
 
     private void DrawSpanWithHighlight(DisplayLine line, int lineIndex, StyledSpan span, ref int col, int width)
     {
-        // Render character-by-character so we can flip background on hits within this line.
+        // Render grapheme-by-grapheme so we can flip background on hits within this line, advancing
+        // by display width so wide glyphs stay aligned with the terminal cursor and hit columns.
         var hits = _searchHits.Where(h => h.Line == lineIndex).ToList();
         var active = _searchHitIndex >= 0 && _searchHitIndex < _searchHits.Count ? _searchHits[_searchHitIndex] : (Line: -1, Col: -1, Len: 0);
-        foreach (var ch in span.Text)
+        foreach (var ch in TextWidth.Graphemes(span.Text))
         {
-            if (col >= width) break;
+            int gw = TextWidth.ElementWidth(ch);
+            if (col + gw > width) break;
             int here = col;
             bool isHit = hits.Any(h => here >= h.Col && here < h.Col + h.Len);
             bool isActive = active.Line == lineIndex && here >= active.Col && here < active.Col + active.Len;
@@ -351,8 +356,8 @@ public sealed partial class TerminalViewer
                 _screen.SetForeground(span.Color ?? _theme.Text);
                 if (span.Style != CellStyle.None) _screen.SetStyle(span.Style);
             }
-            _screen.Write(ch.ToString());
-            col++;
+            _screen.Write(ch);
+            col += gw;
         }
         _screen.Reset();
     }
