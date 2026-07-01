@@ -118,16 +118,17 @@ internal sealed class MermaidRenderer : IAsyncDisposable
     }
 
     /// <summary>
-    /// Ensures the Playwright Chromium build is installed (downloads it to the user cache on
-    /// first run). Throws with a helpful message if provisioning fails.
+    /// Ensures Playwright can run (a Node.js runtime is available) and the Chromium build is
+    /// installed, downloading it to the user cache on first run. Throws with an actionable message
+    /// if provisioning fails.
     /// </summary>
     private void EnsureChromiumInstalled()
     {
         if (_provisioned) return;
-        var exit = Microsoft.Playwright.Program.Main(["install", "chromium"]);
-        if (exit != 0)
+        var result = PdfProvisioning.EnsureInstalled();
+        if (!result.IsReady)
         {
-            _provisionError = "Failed to install the headless browser used to render mermaid diagrams.";
+            _provisionError = result.Message ?? "Failed to provision the headless browser used to render mermaid diagrams.";
             throw new InvalidOperationException(_provisionError);
         }
         _provisioned = true;

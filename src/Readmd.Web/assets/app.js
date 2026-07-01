@@ -532,22 +532,101 @@ function toggleExportMenu(force) {
   exportBtn.setAttribute("aria-expanded", String(show));
   if (show) exportMenu.querySelector("button")?.focus();
 }
-function doExport(format) {
-  toggleExportMenu(false);
+function exportUrl(format) {
   const params = new URLSearchParams({ format });
   if (currentPath) params.set("path", currentPath);
-  if (format === "pdf") showStatus("Preparing PDF…");
-  // Trigger a download by navigating a hidden iframe; the attachment Content-Disposition makes the
-  // browser save it without leaving the page. An error (e.g. PDF tooling missing) flashes a status.
-  let frame = document.getElementById("readmd-download-frame");
-  if (!frame) {
-    frame = document.createElement("iframe");
-    frame.id = "readmd-download-frame";
-    frame.style.display = "none";
-    document.body.appendChild(frame);
+  return `/_readmd/export?${params.toString()}`;
+}
+// Downloads a Blob as a file without navigating away.
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || "document";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function filenameFromDisposition(res, fallback) {
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = /filename="?([^";]+)"?/i.exec(cd);
+  return m ? m[1] : fallback;
+}
+function baseName() {
+  const p = (currentPath || "document").replace(/\\/g, "/");
+  const name = p.slice(p.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "");
+  return name || "document";
+}
+// Fetches an export (html/pdf) and triggers a download, surfacing any server error in the status bar.
+async function fetchAndSave(format) {
+  const isPdf = format === "pdf";
+  showStatus(isPdf ? "Preparing PDF…" : "Exporting…");
+  try {
+    const res = await fetch(exportUrl(format));
+    if (res.ok) {
+      const blob = await res.blob();
+      saveBlob(blob, filenameFromDisposition(res, `${baseName()}.${isPdf ? "pdf" : "html"}`));
+      hideStatus();
+      return { ok: true };
+    }
+    // Non-OK: try to extract a structured/plain error to show the user.
+    const ct = res.headers.get("Content-Type") || "";
+    if (ct.includes("application/json")) {
+      const data = await res.json().catch(() => null);
+      if (data && data.error === "pdf_not_provisioned") return { ok: false, provision: data };
+      showStatus(`Export failed: ${(data && data.message) || res.statusText}`, true);
+    } else {
+      showStatus(`${(await res.text()) || "Export failed"}`, true);
+    }
+    return { ok: false };
+  } catch (e) {
+    showStatus("Export failed: " + e.message, true);
+    return { ok: false };
   }
-  frame.src = `/_readmd/export?${params.toString()}`;
-  if (format === "pdf") setTimeout(hideStatus, 4000);
+}
+// Uses the browser's own print dialog to produce a PDF from the current on-screen rendering.
+// Zero install and always available; the export CSS already has @media print rules.
+function printToPdf() {
+  toggleExportMenu(false);
+  flashStatus("Opening print dialog… choose “Save as PDF”.");
+  setTimeout(() => window.print(), 150);
+}
+async function exportPdf() {
+  // Try the high-quality server render; if the tooling isn't provisioned, prompt to install it or
+  // offer the instant Print fallback.
+  const first = await fetchAndSave("pdf");
+  if (first.ok || !first.provision) return;
+
+  const p = first.provision;
+  if (p.reason === "NodeMissing") {
+    showStatus("High-quality PDF needs Node.js installed. Use “Print to PDF”, or install Node.js from nodejs.org.", true);
+    return;
+  }
+  const ok = window.confirm(
+    "High-quality PDF export needs a one-time download of a headless browser (~150 MB).\n\n" +
+    "Download it now? (Or cancel and use “Print to PDF” instead.)");
+  if (!ok) return;
+
+  showStatus("Downloading the PDF browser (one-time, ~150 MB)… this may take a minute.");
+  try {
+    const res = await fetch("/_readmd/install-pdf", { method: "POST" });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && data.ready) {
+      await fetchAndSave("pdf");
+    } else {
+      showStatus("Couldn’t set up PDF export: " + ((data && data.message) || res.statusText) +
+        " You can still use “Print to PDF”.", true);
+    }
+  } catch (e) {
+    showStatus("Couldn’t set up PDF export: " + e.message + " You can still use “Print to PDF”.", true);
+  }
+}
+function doExport(format) {
+  toggleExportMenu(false);
+  if (format === "print") { printToPdf(); return; }
+  if (format === "pdf") { exportPdf(); return; }
+  fetchAndSave("html");
 }
 exportBtn?.addEventListener("click", (e) => { e.stopPropagation(); toggleExportMenu(); });
 exportMenu?.addEventListener("click", (e) => {

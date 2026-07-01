@@ -469,3 +469,19 @@ body.readmd-zen #readmd-content { max-width: 820px; }
 .readmd-qo-title { font-size: 14px; }
 .readmd-qo-path { font-size: 12px; color: var(--fg-muted); }
 
+/* Print to PDF: hide the app chrome and overlays, print only the document content on white. This
+   powers the "Print to PDF" export (window.print()) so it matches the high-quality server PDF. */
+@media print {
+  #readmd-sidebar, #readmd-toolbar, #readmd-status, #readmd-search-results,
+  #readmd-help-overlay, #readmd-quickopen, #readmd-lightbox, #readmd-skip-link { display: none !important; }
+  html, body { background: #fff !important; }
+  #readmd-layout { display: block !important; }
+  #readmd-main { margin: 0 !important; }
+  #readmd-content {
+    max-width: none !important; margin: 0 auto !important; padding: 0 !important;
+    color: #000 !important;
+  }
+  .readmd-diagram, pre, table, figure, img { break-inside: avoid; }
+  a { color: inherit; text-decoration: underline; }
+}
+

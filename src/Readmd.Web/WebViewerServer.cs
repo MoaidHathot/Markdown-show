@@ -164,6 +164,18 @@ public sealed class WebViewerServer : IAsyncDisposable
                 }
             }
             catch (OperationCanceledException) { /* client navigated away */ }
+            catch (PdfNotProvisionedException ex)
+            {
+                if (!ctx.Response.HasStarted)
+                {
+                    // Structured so the browser can prompt to install or fall back to printing.
+                    ctx.Response.StatusCode = 503;
+                    ctx.Response.ContentType = "application/json; charset=utf-8";
+                    await ctx.Response.WriteAsync(
+                        $"{{\"error\":\"pdf_not_provisioned\",\"reason\":\"{ex.Readiness}\",\"message\":{JsonSerializer.Serialize(ex.Message)}}}",
+                        ctx.RequestAborted);
+                }
+            }
             catch (Exception ex)
             {
                 if (!ctx.Response.HasStarted)
@@ -173,6 +185,29 @@ public sealed class WebViewerServer : IAsyncDisposable
                     await ctx.Response.WriteAsync($"Export failed: {ex.Message}", ctx.RequestAborted);
                 }
             }
+        });
+
+        // Reports whether high-quality (server-rendered) PDF export is ready, so the browser can
+        // decide between exporting directly, prompting a one-time install, or offering Print instead.
+        app.MapGet("/_readmd/pdf-status", (HttpContext ctx) =>
+        {
+            var status = PdfProvisioning.CheckReadiness();
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            return ctx.Response.WriteAsync(
+                $"{{\"ready\":{(status.IsReady ? "true" : "false")},\"reason\":\"{status.Readiness}\",\"message\":{JsonSerializer.Serialize(status.Message)}}}",
+                ctx.RequestAborted);
+        });
+
+        // Provisions the headless browser for PDF export on demand (one-time ~150 MB download). Run
+        // off the request thread so the download doesn't block Kestrel; the browser polls pdf-status.
+        app.MapPost("/_readmd/install-pdf", async (HttpContext ctx) =>
+        {
+            var result = await Task.Run(() => PdfProvisioning.EnsureInstalled(), ctx.RequestAborted);
+            ctx.Response.StatusCode = result.IsReady ? 200 : 503;
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            await ctx.Response.WriteAsync(
+                $"{{\"ready\":{(result.IsReady ? "true" : "false")},\"reason\":\"{result.Readiness}\",\"message\":{JsonSerializer.Serialize(result.Message)}}}",
+                ctx.RequestAborted);
         });
 
         // Project-wide search across the sandbox's markdown files.

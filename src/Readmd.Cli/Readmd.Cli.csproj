@@ -55,11 +55,12 @@
 
   <!--
     Trim the packed tool. A .NET tool bundles the full publish output for every runtime, which for
-    our dependencies means ~300 MB of SkiaSharp .pdb symbols, ~100 MB of Playwright's bundled Node
-    driver, and SkiaSharp native libraries for ~21 runtimes (incl. Android/iOS-Catalyst/RISC-V/
-    LoongArch and exotic musl arches that a desktop CLI never targets). We strip PDBs and Playwright
-    content, and keep only the mainstream desktop runtimes below. This takes the package from
-    ~210 MB down to a reasonable size. Chromium for mermaid is still provisioned at runtime.
+    our dependencies means ~300 MB of SkiaSharp .pdb symbols, ~566 MB of Playwright's per-OS Node.js
+    binaries, and SkiaSharp native libraries for ~21 runtimes (incl. Android/iOS-Catalyst/RISC-V/
+    LoongArch and exotic musl arches that a desktop CLI never targets). We strip PDBs, Playwright's
+    per-OS Node binaries (keeping its small cross-platform JS driver so PDF export still works via a
+    system Node.js), and keep only the mainstream desktop runtimes below. This takes the package from
+    ~210 MB down to a reasonable size. Chromium (for PDF export) is provisioned on demand at runtime.
   -->
   <PropertyGroup>
     <!-- Pipe-delimited so we can do a simple substring membership test per file. -->
@@ -76,9 +77,12 @@
       <!-- Debug symbols: never needed at runtime. -->
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
 
-      <!-- Playwright's bundled Node driver + browser-install scripts. -->
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(_RelPath)').Contains('.playwright/'))" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(_RelPath)').Contains('/node/'))" />
+      <!-- Playwright ships an ~88 MB Node.js binary per OS (~566 MB total) plus a small (~12 MB)
+           cross-platform JS driver. PDF export needs only the JS driver: it drives Playwright with a
+           Node.js found on the user's machine (PLAYWRIGHT_NODEJS_PATH) and downloads Chromium on
+           demand. So strip the per-OS node binaries but KEEP .playwright/package/ (the JS driver)
+           and playwright.ps1. -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(_RelPath)').Contains('.playwright/node/'))" />
 
       <!-- Native libs for runtimes we don't ship: remove any runtimes/<rid>/ file whose <rid> is
            not in _KeepRuntimes. The condition fires only for runtimes/ paths. -->

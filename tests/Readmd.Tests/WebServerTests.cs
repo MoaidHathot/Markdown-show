@@ -171,6 +171,27 @@ public class WebServerTests
         finally { TryDelete(dir); }
     }
 
+    [Fact]
+    public async Task Pdf_status_reports_readiness_as_json()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "readmd-web-" + Guid.NewGuid().ToString("N"));
+        var doc = WriteDoc(dir, "doc.md", "# Hi\n");
+        await using var server = new WebViewerServer(new WebViewerOptions { FilePath = doc, Port = 0 }, new StubDiagrams());
+        await server.StartAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var resp = await http.GetAsync(server.Url + "/_readmd/pdf-status");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.Contains("application/json", resp.Content.Headers.ContentType?.ToString() ?? "");
+            var json = await resp.Content.ReadAsStringAsync();
+            // Shape is stable regardless of whether tooling is installed on the test machine.
+            Assert.Contains("\"ready\"", json);
+            Assert.Contains("\"reason\"", json);
+        }
+        finally { TryDelete(dir); }
+    }
+
     private static void TryDelete(string dir)
     {
         try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { /* ignore */ }

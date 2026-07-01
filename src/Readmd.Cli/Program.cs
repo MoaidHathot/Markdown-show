@@ -94,6 +94,24 @@ var manCommand = new Command("man", "Print a man page (troff) to stdout.");
 manCommand.SetAction(_ => { Console.Out.Write(ShellIntegration.ManPage(version)); return 0; });
 root.Subcommands.Add(manCommand);
 
+// `readmd install-pdf` — provision the headless browser used for high-quality PDF export.
+var installPdfCommand = new Command("install-pdf",
+    "Download the headless browser used for high-quality PDF export (one-time, ~150 MB). Requires Node.js on PATH.");
+installPdfCommand.SetAction(_ =>
+{
+    var result = PdfProvisioning.EnsureInstalled(msg => Console.Error.WriteLine("readmd: " + msg));
+    if (result.IsReady)
+    {
+        Console.Error.WriteLine("readmd: PDF export is ready.");
+        return 0;
+    }
+    Console.Error.WriteLine("readmd: " + result.Message);
+    if (result.Readiness == PdfReadiness.NodeMissing)
+        Console.Error.WriteLine("readmd: install Node.js from https://nodejs.org and re-run `readmd install-pdf`.");
+    return 1;
+});
+root.Subcommands.Add(installPdfCommand);
+
 root.SetAction(async (parse, ct) =>
 {
     var file = parse.GetValue(fileArgument)!;
@@ -278,6 +296,17 @@ static async Task<int> RunExportAsync(string full, bool fromStdin, string export
         var html = await HtmlExporter.ExportAsync(sourcePath, diagrams, theme, ct);
         if (isPdf)
         {
+            // Ensure the headless browser is available, downloading it on first use. A missing
+            // Node.js runtime can't be auto-fixed, so report it clearly and exit.
+            var prov = PdfProvisioning.EnsureInstalled(msg => Console.Error.WriteLine("readmd: " + msg));
+            if (!prov.IsReady)
+            {
+                Console.Error.WriteLine("readmd: cannot export PDF. " + prov.Message);
+                if (prov.Readiness == PdfReadiness.NodeMissing)
+                    Console.Error.WriteLine("readmd: install Node.js from https://nodejs.org, then retry. " +
+                        "Tip: `readmd install-pdf` downloads the browser once Node.js is available.");
+                return 1;
+            }
             var pdf = await PdfRenderer.RenderAsync(html, ct);
             await File.WriteAllBytesAsync(outFull, pdf, ct);
         }

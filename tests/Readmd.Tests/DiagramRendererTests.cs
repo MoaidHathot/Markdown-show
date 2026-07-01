@@ -101,3 +101,37 @@ public class MermaidConfigTests
         Assert.Contains("darkMode", MermaidTheme.ConfigJson(dark: false));
     }
 }
+
+public class PdfProvisioningTests
+{
+    [Fact]
+    public void CheckReadiness_reports_a_coherent_result()
+    {
+        var result = PdfProvisioning.CheckReadiness();
+
+        // Ready iff there is no complaint; a non-ready result must carry an explanatory message.
+        if (result.IsReady)
+        {
+            Assert.Equal(PdfReadiness.Ready, result.Readiness);
+            Assert.NotNull(result.NodePath);
+        }
+        else
+        {
+            Assert.NotEqual(PdfReadiness.Ready, result.Readiness);
+            Assert.False(string.IsNullOrWhiteSpace(result.Message));
+        }
+    }
+
+    [Fact]
+    public void Readiness_reason_matches_node_availability()
+    {
+        var node = PdfProvisioning.FindNode();
+        var result = PdfProvisioning.CheckReadiness();
+
+        // If no Node.js is discoverable, readiness cannot be Ready/BrowserMissing (both need Node),
+        // unless the JS driver itself is missing from this build.
+        if (node is null)
+            Assert.True(result.Readiness is PdfReadiness.NodeMissing or PdfReadiness.DriverMissing,
+                $"expected NodeMissing/DriverMissing without node, got {result.Readiness}");
+    }
+}
