@@ -7,7 +7,7 @@ dnx readmd report.md                 # view in the terminal (TUI)
 dnx readmd report.md --browser       # view in the browser (full fidelity)
 ```
 
-> Requires the **.NET 10 SDK** (for `dnx`). `d2` on your `PATH` is needed for D2 diagrams. For mermaid, readmd uses a local `mmdc` (mermaid-cli) if it's installed; otherwise it downloads a headless browser automatically on first use.
+> Requires the **.NET 10 SDK** (for `dnx`). `d2` on your `PATH` is needed for D2 diagrams, and a local `mmdc` (mermaid-cli) for mermaid. **High-quality PDF export** additionally needs **Node.js** and a one-time headless-browser download (`readmd install-pdf`, or accept the prompt in the browser); everything else works with no extra setup.
 
 ## Features
 
@@ -24,7 +24,7 @@ dnx readmd report.md --browser       # view in the browser (full fidelity)
 - **Diagrams** from fenced code blocks: **mermaid**, **D2**, **Graphviz** (`graphviz`/`dot`), and **PlantUML** (`plantuml`/`puml`) — rendered to images inline in the terminal (via Sixel) and shown natively in the browser. Render failures are reported inline with an actionable message.
 - **Math** via KaTeX (browser) / a Unicode approximation (terminal), **code** via TextMate (terminal) / highlight.js (browser).
 - **Multi-file wiki navigation**: follow local `.md` links with back/forward history (sandboxed to the document's directory). Opening an external link asks for confirmation first.
-- **Browser mode** (`--browser`) for pixel-perfect rendering, served locally (loopback only) from an embedded web server. The browser view adds: **export** the current document to a self-contained `.html` or a `.pdf`; **copy buttons** on code blocks and **permalink anchors** on headings; a **diagram lightbox** (click any mermaid/D2 diagram to zoom/pan, copy or open its SVG); **project-wide search** across the wiki and a **`Ctrl+P` quick-open** file palette; and **persisted** theme/zen/sidebar preferences.
+- **Browser mode** (`--browser`) for pixel-perfect rendering, served locally (loopback only) from an embedded web server. The browser view adds: **export** the current document to a self-contained `.html`, a **high-quality WYSIWYG `.pdf`** (matches the on-screen theme — dark stays dark — on a single page auto-sized to the content, nothing cropped), or **Print to PDF** (the browser's own print dialog); **copy buttons** on code blocks and **permalink anchors** on headings; a **diagram lightbox** (click any mermaid/D2 diagram to zoom/pan, copy or open its SVG); **project-wide search** across the wiki and a **`Ctrl+P` quick-open** file palette; and **persisted** theme/zen/sidebar preferences.
 - **Export & piping**: `--export` writes a self-contained `.html` or `.pdf`; with a redirected stdout (or stdin via `-`) it renders to text, so `readmd file.md | less -R` and `cat file.md | readmd -` just work.
 
 ## Usage
@@ -51,6 +51,11 @@ Options:
       --d2-path <p>    Explicit path to the d2 executable.
   -v, --version        Print the version and exit.
   -h, --help           Show help.
+
+Subcommands:
+  readmd install-pdf         Provision the headless browser for high-quality PDF export.
+  readmd completions <shell> Print a completion script (bash, zsh, fish, pwsh).
+  readmd man                 Print a man page (troff).
 ```
 
 ### Export & piping
@@ -63,14 +68,23 @@ readmd report.md | less -R              # paged, ANSI-colored when the pager is 
 readmd report.md > report.txt           # plain text (styles stripped)
 cat report.md | readmd -                # render from stdin
 readmd report.md --export report.html   # one self-contained HTML file (assets inlined)
-readmd report.md --export report.pdf    # PDF (rendered via the bundled headless browser)
+readmd report.md --export report.pdf    # WYSIWYG PDF (see below)
+readmd install-pdf                      # one-time: provision the browser used for PDF export
 ```
 
 Exported HTML is fully standalone: CSS, JavaScript and KaTeX fonts are inlined,
 local images become data URIs, D2 diagrams are pre-rendered to inline SVG, and
 mermaid/KaTeX run client-side from the embedded libraries — so the file opens
-anywhere with no server. PDF export reuses that HTML through the same headless
-Chromium that renders mermaid.
+anywhere with no server.
+
+**PDF export** renders that same HTML through a headless Chromium to produce a
+**WYSIWYG** PDF: it keeps the document's on-screen theme (a dark document stays
+dark with its colorful text and dark-themed diagrams) and emits a single
+continuous page sized to fit the content, so wide tables and long code aren't
+cropped or reflowed to A4. It needs a **Node.js** runtime on your machine plus a
+one-time Chromium download — run `readmd install-pdf` once (or, in the browser,
+click **Export → PDF (high quality)** and accept the prompt). If Node.js isn't
+available, use **Print to PDF** in the browser instead (the OS print dialog).
 
 ### Terminal keybindings
 
@@ -81,10 +95,10 @@ Vim-style motions are supported throughout, plus the mouse wheel scrolls.
 | `j` / `k` (or arrows) | Scroll one line | mouse wheel | Scroll |
 | `Ctrl` + mouse wheel | Zoom diagrams in / out | `/` | Search |
 | `Ctrl+e` / `Ctrl+y` | Scroll one line (vim) | `n` / `N` | Next / previous match |
-| `Ctrl+d` / `Ctrl+u` | Half page | `n` / `N` | Next / previous match |
+| `Ctrl+d` / `Ctrl+u` | Half page | `←` / `→` (or `Backspace`) | Back / forward (history) |
 | `Ctrl+f` / `Ctrl+b` | Full page | `t` | Table-of-contents overlay |
-| `Space` / `b` | Page down / up | `Enter`, `1`–`5` | Follow a visible link |
-| `gg` / `G` | Top / bottom | `←` / `→` (or `Backspace`) | Back / forward (history) |
+| `Space` / `b` | Page down / up | `Enter`, `1`–`9` | Follow a visible link |
+| `gg` / `G` | Top / bottom | click / `Ctrl`+click | Follow a link (Ctrl skips the confirm) |
 | `Home` / `End` | Top / bottom | `[` | Toggle light / dark theme |
 | `o` | Open in browser | `]` | Toggle solid / transparent background |
 | `m` | Mark mode (select + copy) | `q` (or `Ctrl+C`) | Quit |
@@ -182,12 +196,14 @@ readmd man > ~/.local/share/man/man1/readmd.1
 | Project | Responsibility |
 | --- | --- |
 | **Readmd.Core** | Markdig pipeline, `[[_TOC_]]` extension, TOC/diagram extraction, file watching, link resolution, diagram cache contracts. |
-| **Readmd.Diagrams** | Renders mermaid (local `mmdc`, else headless Chromium via Playwright with mermaid bundled), D2, Graphviz (`dot`), and PlantUML — each external tool → SVG → PNG via SkiaSharp — cached by content hash. |
+| **Readmd.Diagrams** | Renders mermaid (local `mmdc`, else headless Chromium via Playwright with mermaid bundled), D2, Graphviz (`dot`), and PlantUML — each external tool → SVG → PNG via SkiaSharp — cached by content hash. Also drives **PDF export** (Playwright + a system Node.js, Chromium provisioned on demand). |
 | **Readmd.Web** | Kestrel server: HTML rendering, server-rendered D2 SVG, SSE live-reload with `idiomorph`, multi-file SPA navigation, embedded assets. |
 | **Readmd.Terminal** | Hand-rolled TUI: ANSI/truecolor renderer, Markdown→styled-line layout, TextMate highlighting, Sixel image output, search/TOC/links/history. |
 | **Readmd.Cli** | `System.CommandLine` entry point; packaged as the `readmd` .NET tool. |
 
 The Markdig pipeline and diagram cache are shared by both front-ends, so the terminal and browser views stay consistent and diagrams are only rendered once per content hash.
+
+**PDF export** takes the self-contained export HTML, loads it in a headless Chromium with *screen* styles (so the theme is preserved), measures the fully-rendered content, and prints it as one page sized to fit — no A4 pagination and nothing cropped. To keep the packaged tool small, only Playwright's ~12 MB JavaScript driver ships with it; Chromium and a Node.js runtime are located/downloaded on demand (`readmd install-pdf`).
 
 ## Terminal image support
 
