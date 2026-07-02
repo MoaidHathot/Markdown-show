@@ -394,23 +394,44 @@ public sealed partial class TerminalViewer
         _focusScaledKey = "";
     }
 
+    // High-quality resampler for the PNG fallback (Mitchell cubic): far smoother than the default
+    // nearest/box sampling when a raster diagram/image has to be scaled up for a zoomed view.
+    private static readonly SKSamplingOptions _highQualitySampling = new(SKCubicResampler.Mitchell);
+
     private SKBitmap GetScaledDiagram(string key, DiagramResult result)
     {
         var cacheKey = $"{key}-{(_theme.IsDark ? "d" : "l")}-{_screen.Width}-{_cellHeightPx}-{_diagramZoom}";
         if (_scaledDiagramCache.TryGetValue(cacheKey, out var cached) && !cached.IsNull) return cached;
 
-        using var bmp = SKBitmap.Decode(result.Png);
-        var (w, h) = ScaledSize(bmp.Width, bmp.Height, MaxDiagramRows);
+        // Size from the source pixel dimensions (same aspect as the SVG, when present).
+        int srcW = result.PixelWidth > 0 ? result.PixelWidth : 1;
+        int srcH = result.PixelHeight > 0 ? result.PixelHeight : 1;
+        var (w, h) = ScaledSize(srcW, srcH, MaxDiagramRows);
         // Snap height UP to a whole number of cell rows so every scroll crop aligns exactly to a
         // row boundary — otherwise the partial last row makes the image jitter while scrolling.
         int rows = Math.Max(1, (int)Math.Ceiling(h / (double)_cellHeightPx));
         int snappedH = rows * _cellHeightPx;
 
+        bool isImage = key.StartsWith("img-") || key.StartsWith("imgrp-");
+        var scaled = ComposeScaledBitmap(key, result, w, h, snappedH, isImage);
+        _scaledDiagramCache[cacheKey] = scaled;
+        return scaled;
+    }
+
+    /// <summary>
+    /// Renders a diagram/image's content at (<paramref name="w"/>, <paramref name="h"/>) and composes
+    /// it — centered, over the theme (or light-card) backdrop — onto a (w × snappedH) canvas. Content
+    /// is rasterized fresh from the SVG when available (crisp at any zoom), otherwise the PNG is
+    /// resized with high-quality cubic sampling.
+    /// </summary>
+    private SKBitmap ComposeScaledBitmap(string key, DiagramResult result, int w, int h, int snappedH, bool isImage)
+    {
+        var content = RenderContentToFit(result, w, h);
+
         // Dark, transparent images (logos/icons, e.g. a black SVG mark) would vanish when flattened
         // onto the dark theme background. For *images* (not diagrams, which are theme-aware), give
         // such content a light "card" backdrop so it stays visible — like GitHub does in dark mode.
-        bool isImage = key.StartsWith("img-") || key.StartsWith("imgrp-");
-        var backdrop = (_theme.IsDark && isImage && NeedsLightCard(key, bmp))
+        var backdrop = (_theme.IsDark && isImage && content is not null && NeedsLightCard(key, content))
             ? new Rgb(0xf6, 0xf8, 0xfa)
             : _theme.Background;
 
@@ -418,17 +439,35 @@ public sealed partial class TerminalViewer
         using (var canvas = new SKCanvas(scaled))
         {
             canvas.Clear(ToSkColor(backdrop));
-            using var resized = bmp.Resize(new SKImageInfo(w, h), SKSamplingOptions.Default);
-            if (resized is not null)
+            if (content is not null)
             {
-                // Center vertically within the snapped canvas.
-                float top = (snappedH - h) / 2f;
-                canvas.DrawBitmap(resized, 0, top);
+                // Center within the snapped canvas (fit may leave a hair of slack on one axis).
+                float left = (w - content.Width) / 2f;
+                float top = (snappedH - content.Height) / 2f;
+                canvas.DrawBitmap(content, left, top);
             }
         }
-        _scaledDiagramCache[cacheKey] = scaled;
+        content?.Dispose();
         return scaled;
     }
+
+    /// <summary>
+    /// Produces the diagram/image content bitmap at ~(<paramref name="w"/>, <paramref name="h"/>):
+    /// crisp SVG rasterization when a vector source exists, else a cubic-resampled PNG. Caller disposes.
+    /// </summary>
+    private static SKBitmap? RenderContentToFit(DiagramResult result, int w, int h)
+    {
+        if (result.Svg is { Length: > 0 } svg)
+        {
+            var svgBmp = Readmd.Diagrams.SvgRasterizer.RenderToFit(svg, w, h);
+            if (svgBmp is not null) return svgBmp;   // fall through to PNG on parse failure
+        }
+        if (result.Png is null) return null;
+        using var bmp = SKBitmap.Decode(result.Png);
+        if (bmp is null) return null;
+        return bmp.Resize(new SKImageInfo(w, h), _highQualitySampling);
+    }
+
 
     private readonly Dictionary<string, bool> _lightCardDecision = new();
 
@@ -739,7 +778,7 @@ public sealed partial class TerminalViewer
         {
             // Two pixel rows per terminal row; width is one pixel per cell.
             using var resized = crop.Resize(new SKImageInfo(Math.Max(1, visCols), Math.Max(1, visRows * 2)),
-                SKSamplingOptions.Default) ?? crop;
+                _highQualitySampling) ?? crop;
             var lines = HalfBlockEncoder.Encode(resized, _theme.Background);
             for (int i = 0; i < lines.Count && drawRow + i < viewRows; i++)
             {
@@ -764,29 +803,34 @@ public sealed partial class TerminalViewer
 
         _focusScaled?.Dispose();
 
-        using var bmp = SKBitmap.Decode(result.Png);
+        // Size from the source pixel dimensions (same aspect as the SVG, when present) so we don't
+        // have to decode the PNG just to measure it.
+        int srcW = result.PixelWidth > 0 ? result.PixelWidth : 1;
+        int srcH = result.PixelHeight > 0 ? result.PixelHeight : 1;
         double zoom = Math.Pow(1.25, _focusZoom);
         int maxW = Math.Max(_cellWidthPx, (_screen.Width - 1) * _cellWidthPx);
         int maxH = Math.Max(_cellHeightPx, ViewportHeight * _cellHeightPx);
-        double fit = Math.Min(maxW / (double)bmp.Width, maxH / (double)bmp.Height);
+        double fit = Math.Min(maxW / (double)srcW, maxH / (double)srcH);
         double scale = fit * zoom;
-        int w = Math.Max(1, (int)(bmp.Width * scale));
-        int h = Math.Max(1, (int)(bmp.Height * scale));
+        int w = Math.Max(1, (int)(srcW * scale));
+        int h = Math.Max(1, (int)(srcH * scale));
+
+        // OOM guard: extreme zoom could otherwise ask for a multi-gigabyte bitmap (and the compose
+        // step briefly holds two of them). Cap the total pixel budget and scale the target down to
+        // fit — the view crops to the viewport anyway.
+        const long maxPixels = 32_000_000; // ~128 MB RGBA
+        if ((long)w * h > maxPixels)
+        {
+            double k = Math.Sqrt(maxPixels / ((double)w * h));
+            w = Math.Max(1, (int)(w * k));
+            h = Math.Max(1, (int)(h * k));
+        }
+
         int rows = Math.Max(1, (int)Math.Ceiling(h / (double)_cellHeightPx));
         int snappedH = rows * _cellHeightPx;
 
         bool isImage = key.StartsWith("img-") || key.StartsWith("imgrp-");
-        var backdrop = (_theme.IsDark && isImage && NeedsLightCard(key, bmp))
-            ? new Rgb(0xf6, 0xf8, 0xfa)
-            : _theme.Background;
-
-        var scaled = new SKBitmap(w, snappedH);
-        using (var canvas = new SKCanvas(scaled))
-        {
-            canvas.Clear(ToSkColor(backdrop));
-            using var resized = bmp.Resize(new SKImageInfo(w, h), SKSamplingOptions.Default);
-            if (resized is not null) canvas.DrawBitmap(resized, 0, (snappedH - h) / 2f);
-        }
+        var scaled = ComposeScaledBitmap(key, result, w, h, snappedH, isImage);
         _focusScaled = scaled;
         _focusScaledKey = ck;
         return scaled;

@@ -146,10 +146,10 @@ public sealed class ImageLoader : IAsyncDisposable
                 isSvg = path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
             }
 
-            var (png, w, h) = isSvg ? RasterizeSvg(raw) : DecodeRaster(raw);
+            var (png, w, h, svg) = isSvg ? RasterizeSvg(raw) : DecodeRaster(raw);
             var result = png is null
                 ? DiagramResult.Fail(key, "Could not decode image")
-                : new DiagramResult(key, DiagramStatus.Ready, png, null, w, h, null);
+                : new DiagramResult(key, DiagramStatus.Ready, png, svg, w, h, null);
             _cache[key] = result;
             return result;
         }
@@ -165,20 +165,20 @@ public sealed class ImageLoader : IAsyncDisposable
         }
     }
 
-    private static (byte[]? Png, int W, int H) DecodeRaster(byte[] raw)
+    private static (byte[]? Png, int W, int H, string? Svg) DecodeRaster(byte[] raw)
     {
         using var bmp = SKBitmap.Decode(raw);
-        if (bmp is null) return (null, 0, 0);
+        if (bmp is null) return (null, 0, 0, null);
         using var img = SKImage.FromBitmap(bmp);
         using var data = img.Encode(SKEncodedImageFormat.Png, 100);
-        return (data.ToArray(), bmp.Width, bmp.Height);
+        return (data.ToArray(), bmp.Width, bmp.Height, null);
     }
 
-    private static (byte[]? Png, int W, int H) RasterizeSvg(byte[] raw)
+    private static (byte[]? Png, int W, int H, string? Svg) RasterizeSvg(byte[] raw)
     {
         using var svg = new SKSvg();
         using var ms = new MemoryStream(raw);
-        if (svg.Load(ms) is null || svg.Picture is null) return (null, 0, 0);
+        if (svg.Load(ms) is null || svg.Picture is null) return (null, 0, 0, null);
         var rect = svg.Picture.CullRect;
         const float scale = 2f; // crisp on high-DPI
         int w = Math.Max(1, (int)(rect.Width * scale));
@@ -192,7 +192,11 @@ public sealed class ImageLoader : IAsyncDisposable
         }
         using var img = SKImage.FromBitmap(bmp);
         using var data = img.Encode(SKEncodedImageFormat.Png, 100);
-        return (data.ToArray(), w, h);
+        // Keep the SVG source so the viewer can re-rasterize crisply at any zoom size. Strip a UTF-8
+        // BOM if present so the string round-trips cleanly back through the SVG parser.
+        var text = System.Text.Encoding.UTF8.GetString(raw);
+        if (text.Length > 0 && text[0] == '\uFEFF') text = text[1..];
+        return (data.ToArray(), w, h, text);
     }
 
     private string? ResolveLocal(string url, string currentFile)

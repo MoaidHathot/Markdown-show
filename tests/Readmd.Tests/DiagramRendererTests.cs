@@ -135,3 +135,43 @@ public class PdfProvisioningTests
                 $"expected NodeMissing/DriverMissing without node, got {result.Readiness}");
     }
 }
+
+public class SvgRasterizerTests
+{
+    private const string Svg =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"50\" viewBox=\"0 0 100 50\">" +
+        "<rect width=\"100\" height=\"50\" fill=\"#3178c6\"/></svg>";
+
+    [Fact]
+    public void Renders_fitted_to_the_requested_box_preserving_aspect()
+    {
+        using var bmp = SvgRasterizer.RenderToFit(Svg, 200, 200);
+        Assert.NotNull(bmp);
+        // 100x50 fit into 200x200 is width-bound (scale 2): 200x100.
+        Assert.Equal(200, bmp!.Width);
+        Assert.Equal(100, bmp.Height);
+    }
+
+    [Fact]
+    public void Larger_target_re_rasterizes_to_a_larger_bitmap()
+    {
+        using var small = SvgRasterizer.RenderToFit(Svg, 200, 200);
+        using var large = SvgRasterizer.RenderToFit(Svg, 800, 800);
+        Assert.NotNull(small);
+        Assert.NotNull(large);
+        // The point of the fix: bigger request => proportionally bigger pixels (crisp), not an
+        // upscaled copy of a fixed-size raster.
+        Assert.Equal(800, large!.Width);
+        Assert.Equal(400, large.Height);
+        Assert.True(large.Width > small!.Width && large.Height > small.Height);
+    }
+
+    [Fact]
+    public void Empty_or_unparseable_input_returns_null()
+    {
+        Assert.Null(SvgRasterizer.RenderToFit("", 100, 100));
+        Assert.Null(SvgRasterizer.RenderToFit("   ", 100, 100));
+        Assert.Null(SvgRasterizer.RenderToFit(Svg, 0, 100));
+    }
+}
+
