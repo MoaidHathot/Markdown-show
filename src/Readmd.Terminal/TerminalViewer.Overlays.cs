@@ -233,6 +233,7 @@ public sealed partial class TerminalViewer
         {
             ("m", "mark mode (drag = select, right-click = copy)"),
             ("o", "open in browser"),
+            ("v", "focus image (zoom/pan · o app · b browser)"),
             ("?", "this help"),
             ("q", "quit"),
         }),

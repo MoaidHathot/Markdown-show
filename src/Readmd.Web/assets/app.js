@@ -662,11 +662,30 @@ function lbZoom(factor, cx, cy) {
   lbState.scale = next;
   lbApply();
 }
+// Serialize an <svg> to well-formed XML. mermaid's htmlLabels emit <foreignObject> HTML (e.g. an
+// unclosed <br>); outerHTML preserves that HTML flavor, which is invalid SVG/XML. XMLSerializer
+// self-closes void elements so Copy produces valid SVG and Open can parse it.
+function serializeSvg(svgEl) {
+  try { return new XMLSerializer().serializeToString(svgEl); }
+  catch { return svgEl.outerHTML; }
+}
 function openLightbox(svgEl) {
-  lbState = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, svg: svgEl.outerHTML };
-  lbCanvas.innerHTML = svgEl.outerHTML;
+  const svgText = serializeSvg(svgEl);
+  lbState = { scale: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, svg: svgText };
+  lbCanvas.innerHTML = svgText;
   const inner = lbCanvas.querySelector("svg");
-  if (inner) { inner.removeAttribute("width"); inner.removeAttribute("height"); inner.style.maxWidth = "none"; }
+  if (inner) {
+    // Fit-to-stage on open (contain): keep the viewBox, drop the fixed px dimensions, and constrain
+    // BOTH width and height so a wide/short diagram is fully visible. Previously maxWidth was set to
+    // "none", so the CSS max-height:80vh scaled a wide diagram to an enormous width that centered
+    // off-screen (the modal looked empty). Zoom/pan enlarges from this fitted baseline.
+    inner.removeAttribute("width");
+    inner.removeAttribute("height");
+    inner.style.maxWidth = "92vw";
+    inner.style.maxHeight = "82vh";
+    inner.style.width = "auto";
+    inner.style.height = "auto";
+  }
   lbApply();
   lbLastFocus = document.activeElement;
   lightbox.classList.remove("readmd-hidden");
@@ -685,6 +704,34 @@ content.addEventListener("click", (e) => {
   const svg = fig.querySelector("svg");
   if (svg) { e.preventDefault(); openLightbox(svg); }
 });
+// Inline Ctrl+wheel zoom: enlarge a diagram in place on the page (matches the terminal's Ctrl+wheel).
+// Plain wheel keeps scrolling the page; only Ctrl+wheel zooms, and we preventDefault so the browser's
+// own page zoom doesn't fire. Growing the SVG's width reflows the layout (no overlap with following
+// content); the figure scrolls if the enlarged diagram exceeds the column. Wheel back down to reset.
+const inlineZoom = new WeakMap(); // figure -> scale
+function applyInlineZoom(fig, svg, scale) {
+  inlineZoom.set(fig, scale);
+  if (scale <= 1.001) {
+    svg.style.width = "";
+    svg.style.maxWidth = "";
+    fig.classList.remove("readmd-diagram-zoomed");
+  } else {
+    svg.style.maxWidth = "none";
+    svg.style.width = Math.round(scale * 100) + "%";
+    fig.classList.add("readmd-diagram-zoomed");
+  }
+}
+content.addEventListener("wheel", (e) => {
+  if (!e.ctrlKey) return; // plain wheel scrolls the page
+  const fig = e.target.closest("figure.readmd-diagram, .readmd-d2-slot");
+  if (!fig) return;
+  const svg = fig.querySelector("svg");
+  if (!svg) return;
+  e.preventDefault();
+  const prev = inlineZoom.get(fig) || 1;
+  const next = Math.min(8, Math.max(1, prev * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  applyInlineZoom(fig, svg, next);
+}, { passive: false });
 lbStage?.addEventListener("wheel", (e) => { e.preventDefault(); lbZoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });
 lbStage?.addEventListener("dblclick", (e) => lbZoom(1.5, e.clientX, e.clientY));
 lbStage?.addEventListener("pointerdown", (e) => { lbState.dragging = true; lbState.sx = e.clientX - lbState.x; lbState.sy = e.clientY - lbState.y; lbStage.setPointerCapture(e.pointerId); lbStage.style.cursor = "grabbing"; });
@@ -698,8 +745,16 @@ document.getElementById("readmd-lightbox-toolbar")?.addEventListener("click", as
   else if (act === "close") closeLightbox();
   else if (act === "copy") { try { await navigator.clipboard.writeText(lbState.svg); flashStatus("SVG copied"); } catch { flashStatus("Copy failed", true); } }
   else if (act === "open") {
-    const blob = new Blob([lbState.svg], { type: "image/svg+xml" });
-    window.open(URL.createObjectURL(blob), "_blank", "noopener");
+    // Open in a new tab wrapped in an HTML document (NOT image/svg+xml). mermaid's htmlLabels emit
+    // <foreignObject> HTML such as an unclosed <br>, which a strict SVG/XML parser rejects ("Opening
+    // and ending tag mismatch: br … p"). The lenient HTML parser renders it correctly; the white
+    // background matches the in-app diagram card.
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>Diagram</title>` +
+      `<style>html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center;background:#fff}` +
+      `svg{max-width:100vw;max-height:100vh;width:auto;height:auto}</style></head><body>${lbState.svg}</body></html>`;
+    const url = URL.createObjectURL(new Blob([doc], { type: "text/html" }));
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 });
 lightbox?.addEventListener("click", (e) => { if (e.target === lightbox) closeLightbox(); });

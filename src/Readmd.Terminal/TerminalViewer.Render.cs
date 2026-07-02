@@ -194,6 +194,15 @@ public sealed partial class TerminalViewer
         {
             _screen.BeginFrame();
 
+            // Focused single-image view takes over the whole screen (its own clear + hint bar).
+            if (_focusMode)
+            {
+                DrawFocusView();
+                _screen.Reset();
+                _screen.Flush();
+                return;
+            }
+
             int height = ViewportHeight;
             int width = _screen.Width;
 
@@ -370,12 +379,19 @@ public sealed partial class TerminalViewer
     private readonly Dictionary<string, string> _sixelCache = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _halfBlockCache = new();
 
+    // Focused-view scaled bitmap: a single entry, rebuilt when the key/size/theme/zoom changes.
+    private SKBitmap? _focusScaled;
+    private string _focusScaledKey = "";
+
     private void ClearDiagramCaches()
     {
         foreach (var bmp in _scaledDiagramCache.Values) bmp.Dispose();
         _scaledDiagramCache.Clear();
         _sixelCache.Clear();
         _halfBlockCache.Clear();
+        _focusScaled?.Dispose();
+        _focusScaled = null;
+        _focusScaledKey = "";
     }
 
     private SKBitmap GetScaledDiagram(string key, DiagramResult result)
@@ -646,5 +662,171 @@ public sealed partial class TerminalViewer
         _screen.Write(text);
         _screen.Reset();
     }
+
+    // ---------------- focused image view ----------------
+    // Renders ONE image/diagram scaled to fill the whole viewport (bypassing the inline row cap),
+    // centered, with zoom (_focusZoom) and pan (_focusPanRows/_focusPanCols). Both axes can be
+    // cropped, so it uses a general rectangle crop rather than the inline vertical-only slice path.
+    private void DrawFocusView()
+    {
+        _forceHardClear = false;
+        _screen.HardClear();
+        if (_solidBackground) _screen.FillBackground(_theme.Background, _screen.Height, _screen.Width);
+
+        DiagramResult? result = null;
+        if (_focusKey is not null) _diagramResults.TryGetValue(_focusKey, out result);
+
+        if (result is null || result.Status != DiagramStatus.Ready || result.Png is null)
+        {
+            _screen.MoveTo(0, 0).SetForeground(_theme.Muted).Write("Image not available — press esc to close.");
+            DrawFocusHint();
+            return;
+        }
+        if (_graphicsMode == GraphicsMode.None)
+        {
+            _screen.MoveTo(0, 0).SetForeground(_theme.Muted).Write("Inline graphics are disabled in this terminal.");
+            DrawFocusHint();
+            return;
+        }
+
+        var scaled = GetFocusScaled(_focusKey!, result);
+        int imgRows = Math.Max(1, scaled.Height / _cellHeightPx);
+        int imgCols = Math.Max(1, (int)Math.Ceiling(scaled.Width / (double)_cellWidthPx));
+
+        int viewRows = ViewportHeight;
+        int viewCols = _screen.Width;
+
+        // Where the image's top-left sits on screen. Centered when smaller than the view; when larger,
+        // the pan value slides the visible window (clamped so the image can't leave the screen).
+        int marginRows = (viewRows - imgRows) / 2;
+        int marginCols = (viewCols - imgCols) / 2;
+
+        int minTop, maxTop, minLeft, maxLeft;
+        if (imgRows <= viewRows) { minTop = maxTop = marginRows; }
+        else { minTop = viewRows - imgRows; maxTop = 0; }
+        if (imgCols <= viewCols) { minLeft = maxLeft = marginCols; }
+        else { minLeft = viewCols - imgCols; maxLeft = 0; }
+
+        int screenTopRow = Math.Clamp(marginRows - _focusPanRows, minTop, maxTop);
+        int screenLeftCol = Math.Clamp(marginCols - _focusPanCols, minLeft, maxLeft);
+
+        // Visible crop in image-cell space.
+        int srcCellRow = Math.Max(0, -screenTopRow);
+        int drawRow = Math.Max(0, screenTopRow);
+        int visRows = Math.Min(imgRows - srcCellRow, viewRows - drawRow);
+
+        int srcCellCol = Math.Max(0, -screenLeftCol);
+        int drawCol = Math.Max(0, screenLeftCol);
+        int visCols = Math.Min(imgCols - srcCellCol, viewCols - drawCol);
+
+        if (visRows < 1 || visCols < 1) { DrawFocusHint(); return; }
+
+        int srcX = Math.Clamp(srcCellCol * _cellWidthPx, 0, scaled.Width);
+        int srcY = Math.Clamp(srcCellRow * _cellHeightPx, 0, scaled.Height);
+        int srcW = Math.Min(visCols * _cellWidthPx, scaled.Width - srcX);
+        int srcH = Math.Min(visRows * _cellHeightPx, scaled.Height - srcY);
+        if (srcW < 1 || srcH < 1) { DrawFocusHint(); return; }
+
+        using var crop = new SKBitmap(srcW, srcH);
+        using (var canvas = new SKCanvas(crop))
+        {
+            canvas.Clear(ToSkColor(_theme.Background));
+            canvas.DrawBitmap(scaled, new SKRect(srcX, srcY, srcX + srcW, srcY + srcH),
+                new SKRect(0, 0, srcW, srcH));
+        }
+
+        if (_graphicsMode == GraphicsMode.HalfBlock)
+        {
+            // Two pixel rows per terminal row; width is one pixel per cell.
+            using var resized = crop.Resize(new SKImageInfo(Math.Max(1, visCols), Math.Max(1, visRows * 2)),
+                SKSamplingOptions.Default) ?? crop;
+            var lines = HalfBlockEncoder.Encode(resized, _theme.Background);
+            for (int i = 0; i < lines.Count && drawRow + i < viewRows; i++)
+            {
+                _screen.MoveTo(drawRow + i, drawCol);
+                _screen.WriteEscape(lines[i]);
+            }
+        }
+        else
+        {
+            _screen.MoveTo(drawRow, drawCol);
+            _screen.WriteEscape(SixelEncoder.Encode(crop, _theme.Background));
+        }
+
+        DrawFocusHint();
+    }
+
+    /// <summary>Scales the focused image to fit the viewport (contain) times the zoom factor, cached.</summary>
+    private SKBitmap GetFocusScaled(string key, DiagramResult result)
+    {
+        string ck = $"{key}-{(_theme.IsDark ? "d" : "l")}-{_screen.Width}-{ViewportHeight}-{_cellWidthPx}-{_cellHeightPx}-{_focusZoom}";
+        if (_focusScaledKey == ck && _focusScaled is { IsNull: false }) return _focusScaled;
+
+        _focusScaled?.Dispose();
+
+        using var bmp = SKBitmap.Decode(result.Png);
+        double zoom = Math.Pow(1.25, _focusZoom);
+        int maxW = Math.Max(_cellWidthPx, (_screen.Width - 1) * _cellWidthPx);
+        int maxH = Math.Max(_cellHeightPx, ViewportHeight * _cellHeightPx);
+        double fit = Math.Min(maxW / (double)bmp.Width, maxH / (double)bmp.Height);
+        double scale = fit * zoom;
+        int w = Math.Max(1, (int)(bmp.Width * scale));
+        int h = Math.Max(1, (int)(bmp.Height * scale));
+        int rows = Math.Max(1, (int)Math.Ceiling(h / (double)_cellHeightPx));
+        int snappedH = rows * _cellHeightPx;
+
+        bool isImage = key.StartsWith("img-") || key.StartsWith("imgrp-");
+        var backdrop = (_theme.IsDark && isImage && NeedsLightCard(key, bmp))
+            ? new Rgb(0xf6, 0xf8, 0xfa)
+            : _theme.Background;
+
+        var scaled = new SKBitmap(w, snappedH);
+        using (var canvas = new SKCanvas(scaled))
+        {
+            canvas.Clear(ToSkColor(backdrop));
+            using var resized = bmp.Resize(new SKImageInfo(w, h), SKSamplingOptions.Default);
+            if (resized is not null) canvas.DrawBitmap(resized, 0, (snappedH - h) / 2f);
+        }
+        _focusScaled = scaled;
+        _focusScaledKey = ck;
+        return scaled;
+    }
+
+    private void DrawFocusHint()
+    {
+        int row = _screen.Height - 1;
+        _screen.MoveTo(row, 0).ClearLine();
+        _screen.SetBackground(_theme.IsDark ? new Rgb(22, 27, 34) : new Rgb(246, 248, 250));
+        _screen.SetForeground(_theme.Muted);
+
+        // Surface a transient status message (e.g. "Opened in browser") on the left; otherwise show
+        // the focus label + zoom level. The render loop clears expired messages and marks dirty.
+        string left;
+        if (_statusMessage is not null && DateTime.UtcNow <= _statusUntil)
+        {
+            left = " " + _statusMessage;
+        }
+        else
+        {
+            string kind = _focusKey is not null ? FocusLabel(_focusKey) : "image";
+            string zoom = _focusZoom == 0 ? "fit" : $"+{_focusZoom}";
+            left = $" Focus {kind}  [{zoom}]";
+        }
+        string help = " +/-·wheel zoom  hjkl/arrows pan  0 reset  o app  b browser  esc close ";
+
+        int width = _screen.Width;
+        var sb = new StringBuilder();
+        sb.Append(left);
+        int padding = width - left.Length - help.Length;
+        if (padding > 0) sb.Append(new string(' ', padding));
+        if (left.Length + help.Length <= width) sb.Append(help);
+        var text = sb.ToString();
+        if (text.Length > width) text = text[..width];
+        _screen.Write(text);
+        _screen.Reset();
+    }
+
+    private static string FocusLabel(string key) =>
+        key.StartsWith("img-") || key.StartsWith("imgrp-") ? "image" : "diagram";
 
 }

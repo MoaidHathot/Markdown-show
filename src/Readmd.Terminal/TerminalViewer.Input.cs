@@ -221,6 +221,7 @@ public sealed partial class TerminalViewer
     {
         if (_searchMode) { HandleSearchKey(key); return; }
         if (_tocMode) { HandleTocKey(key); return; }
+        if (_focusMode) { HandleFocusKey(key); return; }
         if (_pendingExternalUrl is not null)
         {
             // Awaiting confirmation to open a remote link. Only respond to keyboard keys — mouse
@@ -348,6 +349,7 @@ public sealed partial class TerminalViewer
             case EditorAction.SearchPrev: JumpSearch(-1); return true;
             case EditorAction.Toc: OpenToc(); return true;
             case EditorAction.OpenInBrowser: OpenInBrowser(); return true;
+            case EditorAction.ViewImage: OpenFocusView(); return true;
             case EditorAction.ToggleSelectionMode: ToggleSelectionMode(); return true;
             case EditorAction.Rerender: Rerender(); return true;
             case EditorAction.ToggleTheme: ToggleTheme(); return true;
@@ -572,12 +574,16 @@ public sealed partial class TerminalViewer
             col += w;
         }
 
-        // 2) Click on a clickable image's rendered area: the anchor line carries ImageLinkId and the
-        //    rows below it are reservation rows for the same image.
+        // 2) Click on an image/diagram's rendered area. A clickable (linked) image follows its
+        //    link; any other image/diagram opens the focused full-screen view of that image.
         var anchor = AnchorForRow(lineIndex);
         if (anchor?.ImageLinkId is { } imgLink && imgLink >= 0 && imgLink < _links.Count)
         {
             FollowLink(_links[imgLink], bypassConfirm: ctrl);
+        }
+        else if (anchor?.DiagramKey is { } dkey && !dkey.StartsWith("reserve:"))
+        {
+            OpenFocusViewForKey(dkey);
         }
     }
 
@@ -796,6 +802,192 @@ public sealed partial class TerminalViewer
         if (_options.OpenInBrowser is null) { SetStatus("Browser mode unavailable"); return; }
         SetStatus("Opening in browser…");
         _ = _options.OpenInBrowser(_currentPath);
+    }
+
+    // ---------------- focused image view ----------------
+    /// <summary>Opens the focused full-screen view for the image/diagram nearest the top of the viewport.</summary>
+    private void OpenFocusView()
+    {
+        var key = NearestVisibleImageKey();
+        if (key is null) { SetStatus("No image or diagram on screen to view"); return; }
+        OpenFocusViewForKey(key);
+    }
+
+    /// <summary>Enters the focused full-screen view for a specific image/diagram key.</summary>
+    private void OpenFocusViewForKey(string key)
+    {
+        lock (_stateLock)
+        {
+            if (!_diagramResults.TryGetValue(key, out var r) || r.Status != DiagramStatus.Ready || r.Png is null)
+            {
+                SetStatus("Image is still rendering…");
+                return;
+            }
+            _focusMode = true;
+            _focusKey = key;
+            _focusZoom = 0;
+            _focusPanRows = 0;
+            _focusPanCols = 0;
+            _forceHardClear = true;
+            _dirty = true;
+        }
+    }
+
+    /// <summary>Finds the ready image/diagram whose anchor is visible and closest to the top of the viewport.</summary>
+    private string? NearestVisibleImageKey()
+    {
+        string? best = null;
+        int bestDist = int.MaxValue;
+        foreach (var (key, result) in _diagramResults)
+        {
+            if (result.Status != DiagramStatus.Ready || result.Png is null) continue;
+            int rowsTall = DiagramRows(result);
+            foreach (int anchor in FindAllDiagramLines(key))
+            {
+                int top = anchor - _scroll;
+                int bottom = top + 1 + rowsTall;      // caption + image rows
+                if (bottom <= 0 || top >= ViewportHeight) continue;   // off-screen
+                int dist = Math.Abs(top);
+                if (dist < bestDist) { bestDist = dist; best = key; }
+            }
+        }
+        return best;
+    }
+
+    private void HandleFocusKey(KeyEvent key)
+    {
+        char ch = key.Kind == KeyKind.Char ? char.ToLowerInvariant(key.Char) : '\0';
+
+        switch (key.Kind)
+        {
+            case KeyKind.Escape: CloseFocusView(); return;
+            case KeyKind.MouseScrollUp: FocusZoom(1); return;
+            case KeyKind.MouseScrollDown: FocusZoom(-1); return;
+            case KeyKind.Down: FocusPan(2, 0); return;
+            case KeyKind.Up: FocusPan(-2, 0); return;
+            case KeyKind.Right: FocusPan(0, 4); return;
+            case KeyKind.Left: FocusPan(0, -4); return;
+            case KeyKind.MouseClick: case KeyKind.MouseDrag: case KeyKind.MouseDragEnd:
+            case KeyKind.MouseRightClick: return;   // ignore mouse buttons in the focus view
+        }
+
+        switch (ch)
+        {
+            case 'q': case 'v': CloseFocusView(); return;
+            case '+': case '=': FocusZoom(1); return;
+            case '-': case '_': FocusZoom(-1); return;
+            case '0': _focusZoom = 0; _focusPanRows = 0; _focusPanCols = 0; _forceHardClear = true; _dirty = true; return;
+            case 'j': FocusPan(2, 0); return;
+            case 'k': FocusPan(-2, 0); return;
+            case 'l': FocusPan(0, 4); return;
+            case 'h': FocusPan(0, -4); return;
+            case 'o': if (_focusKey is not null) OpenImageExternally(_focusKey, browser: false); return;
+            case 'b': if (_focusKey is not null) OpenImageExternally(_focusKey, browser: true); return;
+        }
+    }
+
+    private void FocusZoom(int delta)
+    {
+        int next = Math.Clamp(_focusZoom + delta, 0, 12);
+        if (next == _focusZoom) return;
+        lock (_stateLock) { _focusZoom = next; _forceHardClear = true; _dirty = true; }
+    }
+
+    private void FocusPan(int deltaRows, int deltaCols)
+    {
+        lock (_stateLock)
+        {
+            _focusPanRows += deltaRows;
+            _focusPanCols += deltaCols;
+            _forceHardClear = true;
+            _dirty = true;
+        }
+    }
+
+    private void CloseFocusView()
+    {
+        lock (_stateLock)
+        {
+            _focusMode = false;
+            _focusKey = null;
+            _forceHardClear = true;   // wipe the full-screen image; the document repaints next frame
+            _dirty = true;
+        }
+    }
+
+    /// <summary>
+    /// Writes the image/diagram to a temp file and hands it off: to the OS default image viewer
+    /// (raw PNG, or the original local file when available), or to the default browser (a small HTML
+    /// page embedding the image so a browser — not the image app — handles it).
+    /// </summary>
+    private void OpenImageExternally(string key, bool browser)
+    {
+        DiagramResult? result;
+        lock (_stateLock) { _diagramResults.TryGetValue(key, out result); }
+        if (result is null || result.Status != DiagramStatus.Ready || result.Png is null)
+        {
+            SetStatus("Image not ready");
+            return;
+        }
+
+        try
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "readmd");
+            Directory.CreateDirectory(dir);
+            string safe = key.Replace(':', '_');
+
+            if (browser)
+            {
+                string body;
+                if (result.Svg is not null)
+                {
+                    // Inline the SVG directly so mermaid's foreignObject HTML labels render — an
+                    // <img>-embedded SVG runs in restricted mode and may drop them.
+                    body = result.Svg;
+                }
+                else
+                {
+                    var b64 = Convert.ToBase64String(result.Png);
+                    body = "<img src=\"data:image/png;base64," + b64 + "\" alt=\"image\">";
+                }
+                var html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>readmd image</title>" +
+                    "<style>html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center;background:#fff}" +
+                    "img,svg{max-width:100vw;max-height:100vh;width:auto;height:auto}</style></head><body>" +
+                    body + "</body></html>";
+                var htmlPath = Path.Combine(dir, safe + ".html");
+                File.WriteAllText(htmlPath, html);
+                OpenUrl(htmlPath);
+                SetStatus("Opened in browser");
+            }
+            else
+            {
+                // Prefer the original local file (best fidelity, e.g. animated GIF) when we have it.
+                string? local = TryResolveLocalImage(key);
+                string path = local ?? Path.Combine(dir, safe + ".png");
+                if (local is null) File.WriteAllBytes(path, result.Png);
+                OpenUrl(path);
+                SetStatus("Opened in image viewer");
+            }
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Open failed: " + ex.Message);
+        }
+    }
+
+    /// <summary>Resolves an image key back to its on-disk source path when it's a local (non-remote) image.</summary>
+    private string? TryResolveLocalImage(string key)
+    {
+        if (!_pendingImages.TryGetValue(key, out var url)) return null;
+        if (url.StartsWith("http://") || url.StartsWith("https://") || url.StartsWith("data:")) return null;
+        try
+        {
+            var baseDir = Path.GetDirectoryName(_currentPath);
+            if (baseDir is null) return null;
+            var full = Path.GetFullPath(Path.Combine(baseDir, url));
+            return File.Exists(full) ? full : null;
+        }
+        catch { return null; }
     }
 
     private static void OpenUrl(string url)

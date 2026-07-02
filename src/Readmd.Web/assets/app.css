@@ -208,6 +208,9 @@ html, body {
 .readmd-diagram { margin: 20px 0; text-align: center; }
 .readmd-diagram svg { max-width: 100%; height: auto; }
 .readmd-diagram svg, .readmd-d2-slot svg { cursor: zoom-in; }
+/* Inline Ctrl+wheel zoom: the SVG grows past the column and the figure scrolls (no overlap). */
+.readmd-diagram.readmd-diagram-zoomed, .readmd-d2-slot.readmd-diagram-zoomed { overflow: auto; text-align: left; }
+.readmd-diagram-zoomed svg { display: block; height: auto !important; }
 .readmd-diagram-placeholder {
   border: 1px dashed var(--border);
   border-radius: 8px;

@@ -90,6 +90,14 @@ public sealed partial class TerminalViewer : IAsyncDisposable
     // Help overlay
     private bool _helpMode;
 
+    // Focused single-image view (v / click a non-link image): renders ONE image/diagram scaled to
+    // the full viewport with zoom + pan, and can hand it off to the OS image viewer or the browser.
+    private bool _focusMode;
+    private string? _focusKey;
+    private int _focusZoom;       // 0 = fit-to-viewport; each step is +25%
+    private int _focusPanRows;    // vertical pan (rows); positive reveals lower part of the image
+    private int _focusPanCols;    // horizontal pan (cols); positive reveals the right part
+
     // Diagram placement: key -> (startLine, rows). Images share the same result map + draw path.
     private readonly Dictionary<string, DiagramResult> _diagramResults = new();
     private readonly HashSet<string> _diagramRequested = [];
